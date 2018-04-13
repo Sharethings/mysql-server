@@ -43,7 +43,8 @@
 #ifndef MYSQL_CLIENT
 #define MYSQL_CLIENT
 #endif
-
+// flyyear 这面根据宏代替函数的定义的前面返回值和函数名
+// 这面这么搞相当于通过定义一个函数CLI_MYSQL_REAL_CONNECT，但是可以通过后面的不同函数名来调用
 #define CLI_MYSQL_REAL_CONNECT STDCALL cli_mysql_real_connect
 
 #undef net_flush
@@ -1183,6 +1184,7 @@ cli_safe_read_with_ok(MYSQL *mysql, my_bool parse_ok,
   @retval The length of the packet that was read or packet_error in case of
           error. In case of error its description is stored in mysql handle.
 */
+// feinian #define BOOLEAN my_bool
 ulong cli_safe_read(MYSQL *mysql, my_bool *is_data_packet)
 {
   return cli_safe_read_with_ok(mysql, 0, is_data_packet);
@@ -3452,9 +3454,11 @@ mysql_fill_packet_header(MYSQL *mysql, char *buff,
   @param  db      The client flag as specified by the client app
   */
 
+// feinian 这面计算客户端的权能标志
 static void
 cli_calculate_client_flag(MYSQL *mysql, const char *db, ulong client_flag)
 {
+  DBUG_PRINT("flyyear",("before cli_calculate_client_flag server capability: %0x, client_flag %0x",mysql->server_capabilities, mysql->client_flag));
   mysql->client_flag= client_flag;
   mysql->client_flag|= mysql->options.client_flag;
   mysql->client_flag|= CLIENT_CAPABILITIES;
@@ -3474,10 +3478,13 @@ cli_calculate_client_flag(MYSQL *mysql, const char *db, ulong client_flag)
     mysql->client_flag&= ~CLIENT_CONNECT_WITH_DB;
 
   /* Remove options that server doesn't support */
+  // feinian 这面直接把服务器的权能标志与？
+  
+  DBUG_PRINT("flyyear", ("after & client_flag is %0x, result is %0x", mysql->client_flag,  ~(CLIENT_COMPRESS | CLIENT_SSL | CLIENT_PROTOCOL_41) | mysql->server_capabilities));
   mysql->client_flag= mysql->client_flag &
     (~(CLIENT_COMPRESS | CLIENT_SSL | CLIENT_PROTOCOL_41)
     | mysql->server_capabilities);
-
+  DBUG_PRINT("flyyear", ("after & client_flag is %0x", mysql->client_flag));
   if(mysql->options.protocol == MYSQL_PROTOCOL_SOCKET &&
      mysql->options.extension &&
      mysql->options.extension->ssl_mode <= SSL_MODE_PREFERRED)
@@ -3488,6 +3495,7 @@ cli_calculate_client_flag(MYSQL *mysql, const char *db, ulong client_flag)
 #ifndef HAVE_COMPRESS
   mysql->client_flag&= ~CLIENT_COMPRESS;
 #endif
+  DBUG_PRINT("flyyear",("after cli_calculate_client_flag server capability: %0x, client_flag %0x",mysql->server_capabilities, mysql->client_flag));
 }
 
 
@@ -4160,6 +4168,7 @@ set_connect_attributes(MYSQL *mysql, char *buff, size_t buf_len)
   return rc > 0 ? 1 : 0;
 }
 
+// flyyear 这面是根据上面的宏进行调用的
 
 MYSQL * STDCALL 
 CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
@@ -4620,7 +4629,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     Part 1: Connection established, read and parse first packet
   */
   DBUG_PRINT("info", ("Read first packet."));
-
+ // feinian 这面客户端开始读包
   if ((pkt_length=cli_safe_read(mysql, NULL)) == packet_error)
   {
     if (mysql->net.last_errno == CR_SERVER_LOST)
@@ -4636,6 +4645,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   DBUG_DUMP("packet",(uchar*) net->read_pos,10);
   DBUG_PRINT("info",("mysql protocol version %d, server=%d",
 		     PROTOCOL_VERSION, mysql->protocol_version));
+  DBUG_PRINT("flyyear", ("read protocal server capabilities is %lu, client flag is %lu", mysql->server_capabilities, mysql->client_flag));
   if (mysql->protocol_version != PROTOCOL_VERSION)
   {
     set_mysql_extended_error(mysql, CR_VERSION_ERROR, unknown_sqlstate,
@@ -4650,19 +4660,30 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     Scramble is split into two parts because old clients do not understand
     long scrambles; here goes the first part.
   */
+  // feinian 在服务器发给客户端第一个包的协议, 里面关于scramble有三个部分
+  // 1. 八个字节 2. 一个字节的挑战长度（未使用）3. 后面的scramble最少为12个字节
+  // 看上面的注释，意思是老得客户端看不懂后面的最少12个字节的scramble
   scramble_data= end;
   scramble_data_len= AUTH_PLUGIN_DATA_PART_1_LENGTH + 1;
   scramble_plugin= NULL;
   end+= scramble_data_len;
 
   if (pkt_end >= end + 1)
+      // feinian 这面读取的是低两个字节的权能标志
     mysql->server_capabilities=uint2korr((uchar*) end);
   if (pkt_end >= end + 18)
   {
     /* New protocol with 16 bytes to describe server characteristics */
+    // 这面读取一个字节的编码、两个字节的服务器状态、两个字节的高16位权能标志
     mysql->server_language=end[2];
     mysql->server_status=uint2korr((uchar*) end + 3);
+    DBUG_PRINT("flyyear", ("low 16 capability is %lu", mysql->server_capabilities));
+    DBUG_PRINT("flyyear", ("low 16 capability is %0x", mysql->server_capabilities));
+    DBUG_PRINT("flyyear", ("high 16 capability is %lu, << 16 is %lu", uint2korr((uchar*) end + 5), uint2korr((uchar*) end + 5) << 16));
+    DBUG_PRINT("flyyear", ("high 16 capability is %0x, << 16 is %0x", uint2korr((uchar*) end + 5), uint2korr((uchar*) end + 5) << 16));
     mysql->server_capabilities|= uint2korr((uchar*) end + 5) << 16;
+    DBUG_PRINT("flyyear", ("1 server capabilities is %lu", mysql->server_capabilities));
+    DBUG_PRINT("flyyear", ("1 server capabilities is %0x", mysql->server_capabilities));
     pkt_scramble_len= end[7];
     if (pkt_scramble_len < 0)
     {
@@ -6175,6 +6196,7 @@ int STDCALL mysql_set_character_set(MYSQL *mysql, const char *cs_name)
   client authentication plugin that does native MySQL authentication
   using a 20-byte (4.1+) scramble
 */
+// feinian mysql_native_password认证方式
 static int native_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql)
 {
   int pkt_len;
@@ -6211,6 +6233,7 @@ static int native_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql)
     char scrambled[SCRAMBLE_LENGTH + 1];
     DBUG_PRINT("info", ("sending scramble"));
     scramble(scrambled, (char*)pkt, mysql->passwd);
+    DBUG_PRINT("flyyear", ("before write_packet servercapabilities is %lu, client flag is %lu", mysql->server_capabilities, mysql->client_flag));
     if (vio->write_packet(vio, (uchar*)scrambled, SCRAMBLE_LENGTH))
       DBUG_RETURN(CR_ERROR);
   }

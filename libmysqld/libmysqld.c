@@ -70,7 +70,7 @@ static my_bool is_NT(void)
 
 
 int mysql_init_character_set(MYSQL *mysql);
-
+// feinian  这面进行mysql客户端初始化的工作
 MYSQL * STDCALL
 mysql_real_connect(MYSQL *mysql,const char *host, const char *user,
 		   const char *passwd, const char *db,
@@ -150,7 +150,7 @@ mysql_real_connect(MYSQL *mysql,const char *host, const char *user,
 
   port=0;
   unix_socket=0;
-
+// flyyear 这面计算客户端的权能标志
   client_flag|=mysql->options.client_flag;
   /* Send client information for access check */
   client_flag|=CLIENT_CAPABILITIES;
