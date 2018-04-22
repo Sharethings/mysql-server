@@ -192,9 +192,6 @@ static char delimiter[16]= DEFAULT_DELIMITER;
 static size_t delimiter_length= 1;
 unsigned short terminal_width= 80;
 
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-static char *shared_memory_base_name=0;
-#endif
 static uint opt_protocol=0;
 static const CHARSET_INFO *charset_info= &my_charset_latin1;
 
@@ -220,35 +217,6 @@ const char *default_dbug_option="d:t:o,/tmp/mysql.trace";
 #ifndef DBUG_OFF
 static my_bool opt_build_completion_hash = FALSE;
 #endif
-
-#ifdef _WIN32
-/*
-  A flag that indicates if --execute buffer has already been converted,
-  to avoid double conversion on reconnect.
-*/
-static my_bool execute_buffer_conversion_done= 0;
-
-/*
-  my_win_is_console(...) is quite slow.
-  We cache my_win_is_console() results for stdout and stderr.
-  Any other output files, except stdout and stderr,
-  cannot be Windows console.
-  Note, if mysql.exe is executed from a service, its _fileno(stdout) is -1,
-  so shift (1 << -1) can return implementation defined result.
-  This corner case is taken into account, as the shift result
-  will be multiplied to 0 and we'll get 0 as a result.
-  The same is true for stderr.
-*/
-static uint win_is_console_cache= 
-  (MY_TEST(my_win_is_console(stdout)) * (1 << _fileno(stdout))) |
-  (MY_TEST(my_win_is_console(stderr)) * (1 << _fileno(stderr)));
-
-static inline my_bool
-my_win_is_console_cached(FILE *file)
-{
-  return win_is_console_cache & (1 << _fileno(file));
-}
-#endif /* _WIN32 */
 
 /* Various printing flags */
 #define MY_PRINT_ESC_0 1  /* Replace 0x00 bytes to "\0"              */
@@ -1207,27 +1175,7 @@ static int delimiter_index= -1;
 static int charset_index= -1;
 static bool real_binary_mode= FALSE;
 
-#ifdef _WIN32
-BOOL windows_ctrl_handler(DWORD fdwCtrlType)
-{
-  switch (fdwCtrlType)
-  {
-  case CTRL_C_EVENT:
-  case CTRL_BREAK_EVENT:
-    handle_ctrlc_signal(SIGINT);
-    /* Indicate that signal has beed handled. */  
-    return TRUE;
-  case CTRL_CLOSE_EVENT:
-  case CTRL_LOGOFF_EVENT:
-  case CTRL_SHUTDOWN_EVENT:
-    handle_quit_signal(SIGINT + 1);
-  }
-  /* Pass signal to the next control handler function. */
-  return FALSE;
-}
-#endif
-
-
+// flyyear 客户端入口
 int main(int argc,char *argv[])
 {
   char buff[80];
@@ -1280,11 +1228,6 @@ int main(int argc,char *argv[])
       close(stdout_fileno_copy);             /* Clean up dup(). */
   }
 
-#ifdef _WIN32
-  /* Convert command line parameters from UTF16LE to UTF8MB4. */
-  my_win_translate_command_line_args(&my_charset_utf8mb4_bin, &argc, &argv);
-#endif
-
   my_getopt_use_args_separator= TRUE;
   if (load_defaults("my",load_default_groups,&argc,&argv))
   {
@@ -1321,6 +1264,7 @@ int main(int argc,char *argv[])
   completion_hash_init(&ht, 128);
   init_alloc_root(PSI_NOT_INSTRUMENTED, &hash_mem_root, 16384, 0);
   memset(&mysql, 0, sizeof(mysql));
+  // flyyear 开始连接
   if (sql_connect(current_host,current_db,current_user,opt_password,
 		  opt_silent))
   {
@@ -1507,9 +1451,6 @@ void mysql_end(int sig)
   my_free(full_username);
   my_free(part_username);
   my_free(default_prompt);
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  my_free(shared_memory_base_name);
-#endif
   my_free(current_prompt);
   while (embedded_server_arg_count > 1)
     my_free(embedded_server_args[--embedded_server_arg_count]);
@@ -1570,18 +1511,7 @@ void handle_quit_signal(int sig)
   kill_query(reason);
 
 err:
-#ifdef _WIN32
-  /*
-   When a signal is raised on Windows, the OS creates a new thread to
-   handle the interrupt. Once that thread completes, the main thread
-   continues running only to find that it's resources have already been
-   free'd when the signal handler called mysql_end().
-  */
-  mysql_thread_end();
-  return;
-#else
   mysql_end(sig);
-#endif
 }
 
 
@@ -1775,10 +1705,6 @@ static struct my_option my_long_options[] =
   {"password", 'p',
    "Password to use when connecting to server. If password is not given it's asked from the tty.",
    0, 0, 0, GET_PASSWORD, OPT_ARG, 0, 0, 0, 0, 0, 0},
-#ifdef _WIN32
-  {"pipe", 'W', "Use named pipes to connect to server.", 0, 0, 0, GET_NO_ARG,
-   NO_ARG, 0, 0, 0, 0, 0, 0},
-#endif
   {"port", 'P', "Port number to use for connection or 0 for default to, in "
    "order of preference, my.cnf, $MYSQL_TCP_PORT, "
 #if MYSQL_PORT_DEFAULT == 0
@@ -1804,11 +1730,6 @@ static struct my_option my_long_options[] =
    &opt_reconnect, &opt_reconnect, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
   {"silent", 's', "Be more silent. Print results with a tab as separator, "
    "each row on new line.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  {"shared-memory-base-name", OPT_SHARED_MEMORY_BASE_NAME,
-   "Base name of shared memory.", &shared_memory_base_name,
-   &shared_memory_base_name, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-#endif
   {"socket", 'S', "The socket file to use for connection.",
    &opt_mysql_unix_port, &opt_mysql_unix_port, 0, GET_STR_ALLOC,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -2114,9 +2035,6 @@ get_one_option(int optid, const struct my_option *opt MY_ATTRIBUTE((unused)),
     set_if_bigger(opt_silent,1);                         // more silent
     break;
   case 'W':
-#ifdef _WIN32
-    opt_protocol = MYSQL_PROTOCOL_PIPE;
-#endif
     break;
 #include <sslopt-case.h>
   case 'V':
@@ -2204,10 +2122,6 @@ static int get_options(int argc, char **argv)
 
 static int read_and_execute(bool interactive)
 {
-#if defined(_WIN32)
-  String tmpbuf;
-  String buffer;
-#endif
 
   /*
     line can be allocated by:
@@ -2292,26 +2206,6 @@ static int read_and_execute(bool interactive)
       if (opt_outfile && glob_buffer.is_empty())
 	fflush(OUTFILE);
 
-#if defined(_WIN32)
-      size_t nread;
-      tee_fputs(prompt, stdout);
-      if (!tmpbuf.is_alloced())
-        tmpbuf.alloc(65535);
-      tmpbuf.length(0);
-      buffer.length(0);
-      line= my_win_console_readline(charset_info,
-                                    (char *) tmpbuf.ptr(),
-                                    tmpbuf.alloced_length(),
-                                    &nread);
-      if (line && (nread == 0))
-      {
-        tee_puts("^C", stdout);
-        reset_prompt(&in_string, &ml_comment);
-        continue;
-      }
-      else if (*line == 0x1A)                   /* (Ctrl + Z) */
-        break;
-#else
       if (opt_outfile)
         fputs(prompt, OUTFILE);
       /*
@@ -2328,7 +2222,6 @@ static int read_and_execute(bool interactive)
         reset_prompt(&in_string, &ml_comment);
         continue;
       }
-#endif                                          /* defined(_WIN32) */
       /*
         When Ctrl+d or Ctrl+z is pressed, the line may be NULL on some OS
         which may cause coredump.
@@ -2385,16 +2278,11 @@ static int read_and_execute(bool interactive)
     }
   }
 
-#if defined(_WIN32)
-  buffer.mem_free();
-  tmpbuf.mem_free();
-#else
   if (interactive)
     /*
       free the last entered line.
     */
     free(line);
-#endif
 
   /*
     If the function is called by 'source' command, it will return to interactive
@@ -5005,6 +4893,7 @@ get_quote_count(const char *line)
   return quote_count;
 }
 
+// flyyear 这面进行连接
 static int
 sql_real_connect(char *host,char *database,char *user,char *password,
 		 uint silent)
@@ -5018,29 +4907,8 @@ sql_real_connect(char *host,char *database,char *user,char *password,
   mysql_init(&mysql);
   init_connection_options(&mysql);
 
-#ifdef _WIN32
-  uint cnv_errors;
-  String converted_database, converted_user;
-  if (!my_charset_same(&my_charset_utf8mb4_bin, mysql.charset))
-  {
-    /* Convert user and database from UTF8MB4 to connection character set */
-    if (user)
-    {
-      converted_user.copy(user, strlen(user) + 1,
-                          &my_charset_utf8mb4_bin, mysql.charset,
-                          &cnv_errors);
-      user= (char *) converted_user.ptr();
-    }
-    if (database)
-    {
-      converted_database.copy(database, strlen(database) + 1,
-                              &my_charset_utf8mb4_bin, mysql.charset,
-                              &cnv_errors);
-      database= (char *) converted_database.ptr();
-    }
-  }
-#endif
-
+  // flyyear
+  // 这面调用的mysql_real_connect函数在sql-common/client.c文件里面，通过宏CLI_MYSQL_REAL_CONNECT定义不同的名字调用,不是tags跳转的那个
   if (!mysql_real_connect(&mysql, host, user, password,
                           database, opt_mysql_port, opt_mysql_unix_port,
                           connect_flag | CLIENT_MULTI_STATEMENTS))
@@ -5061,37 +4929,6 @@ sql_real_connect(char *host,char *database,char *user,char *password,
     }
     return -1;					// Retryable
   }
-
-#ifdef _WIN32
-  /* Convert --execute buffer from UTF8MB4 to connection character set */
-  if (!execute_buffer_conversion_done++ &&
-      status.line_buff &&
-      !status.line_buff->file && /* Convert only -e buffer, not real file */
-      status.line_buff->buffer < status.line_buff->end && /* Non-empty */
-      !my_charset_same(&my_charset_utf8mb4_bin, mysql.charset))
-  {
-    String tmp;
-    size_t len= status.line_buff->end - status.line_buff->buffer;
-    uint dummy_errors;
-    /*
-      Don't convert trailing '\n' character - it was appended during
-      last batch_readline_command() call. 
-      Oherwise we'll get an extra line, which makes some tests fail.
-    */
-    if (status.line_buff->buffer[len - 1] == '\n')
-      len--;
-    if (tmp.copy(status.line_buff->buffer, len,
-                 &my_charset_utf8mb4_bin, mysql.charset, &dummy_errors))
-      return 1;
-
-    /* Free the old line buffer */
-    batch_readline_end(status.line_buff);
-
-    /* Re-initialize line buffer from the converted string */
-    if (!(status.line_buff= batch_readline_command(NULL, (char *) tmp.c_ptr_safe())))
-      return 1;
-  }
-#endif /* _WIN32 */
 
   charset_info= mysql.charset;
   
@@ -5138,10 +4975,6 @@ init_connection_options(MYSQL *mysql)
   if (opt_protocol)
     mysql_options(mysql, MYSQL_OPT_PROTOCOL, (char*) &opt_protocol);
 
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  if (shared_memory_base_name)
-    mysql_options(mysql, MYSQL_SHARED_MEMORY_BASE_NAME, shared_memory_base_name);
-#endif
 
   if (safe_updates)
   {
@@ -5468,9 +5301,6 @@ static void remove_cntrl(String &buffer)
 */
 void tee_write(FILE *file, const char *s, size_t slen, int flags)
 {
-#ifdef _WIN32
-  my_bool is_console= my_win_is_console_cached(file);
-#endif
   const char *se;
   for (se= s + slen; s < se; s++)
   {
@@ -5482,11 +5312,6 @@ void tee_write(FILE *file, const char *s, size_t slen, int flags)
       if (use_mb(charset_info) &&
           (mblen= my_ismbchar(charset_info, s, se)))
       {
-#ifdef _WIN32
-        if (is_console)
-          my_win_console_write(charset_info, s, mblen);
-        else
-#endif
         if (fwrite(s, 1, mblen, file) != (size_t) mblen) {
           perror("fwrite");
         }
@@ -5514,11 +5339,6 @@ void tee_write(FILE *file, const char *s, size_t slen, int flags)
       tee_fputs("\\\\", file);
     else
     {
-#ifdef _WIN32
-      if (is_console)
-        my_win_console_putc(charset_info, (int) *s);
-      else
-#endif
       putc((int) *s, file);
       if (opt_outfile)
         putc((int) *s, OUTFILE);
@@ -5532,11 +5352,6 @@ void tee_fprintf(FILE *file, const char *fmt, ...)
   va_list args;
 
   va_start(args, fmt);
-#ifdef _WIN32
-  if (my_win_is_console_cached(file))
-    my_win_console_vfprintf(charset_info, fmt, args);
-  else
-#endif
   (void) vfprintf(file, fmt, args);
   va_end(args);
 
@@ -5558,11 +5373,6 @@ void tee_fprintf(FILE *file, const char *fmt, ...)
 */
 void tee_fputs(const char *s, FILE *file)
 {
-#ifdef _WIN32
-  if (my_win_is_console_cached(file))
-    my_win_console_fputs(charset_info, s);
-  else
-#endif
   fputs(s, file);
   if (opt_outfile)
     fputs(s, OUTFILE);
@@ -5577,11 +5387,6 @@ void tee_puts(const char *s, FILE *file)
 
 void tee_putc(int c, FILE *file)
 {
-#ifdef _WIN32
-  if (my_win_is_console_cached(file))
-    my_win_console_putc(charset_info, c);
-  else
-#endif
   putc(c, file);
   if (opt_outfile)
     putc(c, OUTFILE);
@@ -5599,12 +5404,8 @@ void tee_putc(int c, FILE *file)
 
 static ulong start_timer(void)
 {
-#if defined(_WIN32)
-  return clock();
-#else
   struct tms tms_tmp;
   return times(&tms_tmp);
-#endif
 }
 
 
@@ -5856,24 +5657,6 @@ static void init_username()
 static void get_current_os_user() {
   const char *user;
 
-#ifdef _WIN32
-  char buf[255];
-  WCHAR wbuf[255];
-  DWORD wbuf_len= sizeof(wbuf) / sizeof(WCHAR);
-  size_t len;
-  uint dummy_errors;
-
-  if (GetUserNameW(wbuf, &wbuf_len))
-  {
-    len= my_convert(buf, sizeof(buf) - 1, charset_info, (char *) wbuf,
-                    wbuf_len * sizeof(WCHAR), &my_charset_utf16le_bin,
-                    &dummy_errors);
-    buf[len]= 0;
-    user= buf;
-  } else {
-    user= "UNKNOWN USER";
-  }
-#else
 #ifdef HAVE_GETPWUID
   struct passwd *pw;
 
@@ -5885,7 +5668,6 @@ static void get_current_os_user() {
        !(user= getenv("LOGNAME")) &&
        !(user= getenv("LOGIN")))
     user= "UNKNOWN USER";
-#endif                                          /* _WIN32 */
   current_os_user= my_strdup(PSI_NOT_INSTRUMENTED,
                              user, MYF(MY_WME));
   return;
@@ -5893,11 +5675,6 @@ static void get_current_os_user() {
 
 // Get the current OS sudo user name (only for non-Windows platforms).
 static void get_current_os_sudouser() {
-#ifndef _WIN32
-  if (getenv("SUDO_USER"))
-   current_os_sudouser= my_strdup(PSI_NOT_INSTRUMENTED,
-                                  getenv("SUDO_USER"), MYF(MY_WME));
-#endif                                          /* !_WIN32 */
   return;
 }
 

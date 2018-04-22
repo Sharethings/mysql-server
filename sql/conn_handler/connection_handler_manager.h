@@ -44,6 +44,8 @@ struct THD_event_functions
   related functionalities, most importantly dispatching new connections
   to the currently active Connection_handler.
 */
+// flyyear
+// 这是一个单例类，提供各种连接管理的相关功能，最重要的是将新连接分配给当前活动的Connection_handler
 class Connection_handler_manager
 {
   // Singleton instance to Connection_handler_manager

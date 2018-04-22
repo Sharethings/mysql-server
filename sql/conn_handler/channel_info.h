@@ -33,6 +33,8 @@ typedef struct st_vio Vio;
   Currently we support local and TCP/IP sockets (all platforms),
   named pipes and shared memory (Windows only).
 */
+// flyyear 抽象的基类表示一个新的连接的信息
+// TCP/IP连接适合所有平台 pipes、shared memory只支持windows
 class Channel_info
 {
   ulonglong prior_thr_create_utime;

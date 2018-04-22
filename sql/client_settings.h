@@ -27,6 +27,7 @@
  When adding capabilities here, consider if they should be also added to
  the libmysql version.
 */
+// flyyear 这面直接定义客户端的权能标志
 #define CLIENT_CAPABILITIES (CLIENT_LONG_PASSWORD | \
                              CLIENT_LONG_FLAG |     \
                              CLIENT_TRANSACTIONS |  \

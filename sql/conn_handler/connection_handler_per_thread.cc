@@ -233,6 +233,10 @@ static THD* init_new_thd(Channel_info *channel_info)
   - End thread  / Handle next connection using thread from thread cache
 */
 
+// flyyear 在该函数里面进行thd的初始化给使用的线程
+// 用户验证
+// sql执行
+// 关闭连接 结束线程
 extern "C" void *handle_connection(void *arg)
 {
   Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
@@ -241,6 +245,8 @@ extern "C" void *handle_connection(void *arg)
   Channel_info* channel_info= static_cast<Channel_info*>(arg);
   bool pthread_reused MY_ATTRIBUTE((unused))= false;
 
+  // flyyear Allocate thread specific memory for the thread, used by mysys and dbug
+  // 给mysys和dbug非配内存
   if (my_thread_init())
   {
     connection_errors_internal++;
@@ -291,12 +297,15 @@ extern "C" void *handle_connection(void *arg)
 
     thd_manager->add_thd(thd);
 
+    // flyyear 这面进行用户验证
+    // 函数默认返回false，表示验证成功
     if (thd_prepare_connection(thd))
       handler_manager->inc_aborted_connects();
     else
     {
       while (thd_connection_alive(thd))
       {
+          // flyyear 这面开始处理命令
         if (do_command(thd))
           break;
       }
@@ -382,6 +391,7 @@ bool Per_thread_connection_handler::check_idle_thread_and_enqueue_connection(
 }
 
 
+// flyyear 添加新的连接
 bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
 {
   int error= 0;
@@ -392,6 +402,7 @@ bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
   // Simulate thread creation for test case before we check thread cache
   DBUG_EXECUTE_IF("fail_thread_create", error= 1; goto handle_error;);
 
+  // flyyear 优先从连接队列里面取，如果没有就新建连接线程
   if (!check_idle_thread_and_enqueue_connection(channel_info))
     DBUG_RETURN(false);
 
@@ -399,7 +410,9 @@ bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
     There are no idle threads avaliable to take up the new
     connection. Create a new thread to handle the connection
   */
+  // flyyear 新建连接的线程，设置新建时间
   channel_info->set_prior_thr_create_utime();
+  // flyyear 此处有个参数handle_connection是在线程创建时注册要处理的函数handle_connection
   error= mysql_thread_create(key_thread_one_connection, &id,
                              &connection_attrib,
                              handle_connection,

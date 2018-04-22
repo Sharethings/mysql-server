@@ -27,6 +27,7 @@ class Connection_handler_manager;
   This abstract base class represents how connections are processed,
   most importantly how they map to OS threads.
 */
+// flyyear 处理连接，最重要的是如何映射到操作系统线程
 class Connection_handler
 {
 protected:

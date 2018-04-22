@@ -219,16 +219,6 @@ static int vio_set_blocking(Vio *vio, my_bool status)
 {
   DBUG_ENTER("vio_set_blocking");
 
-#ifdef _WIN32
-  DBUG_ASSERT(vio->type != VIO_TYPE_NAMEDPIPE);
-  DBUG_ASSERT(vio->type != VIO_TYPE_SHARED_MEMORY);
-  {
-    int ret;
-    u_long arg= status ? 0 : 1;
-    ret= ioctlsocket(mysql_socket_getfd(vio->mysql_socket), FIONBIO, &arg);
-    DBUG_RETURN(ret);
-  }
-#else
   {
     int flags;
 
@@ -249,7 +239,6 @@ static int vio_set_blocking(Vio *vio, my_bool status)
     if (fcntl(mysql_socket_getfd(vio->mysql_socket), F_SETFL, flags) == -1)
       DBUG_RETURN(-1);
   }
-#endif
 
   DBUG_RETURN(0);
 }
@@ -262,42 +251,6 @@ int vio_socket_timeout(Vio *vio,
   int ret= 0;
   DBUG_ENTER("vio_socket_timeout");
 
-#if defined(_WIN32)
-  {
-    int optname;
-    DWORD timeout= 0;
-    const char *optval= (const char *) &timeout;
-
-    /*
-      The default socket timeout value is zero, which means an infinite
-      timeout. Values less than 500 milliseconds are interpreted to be of
-      500 milliseconds. Hence, the VIO behavior for zero timeout, which is
-      intended to cause the send or receive operation to fail immediately
-      if no data is available, is not supported on WIN32 and neither is
-      necessary as it's not possible to set the VIO timeout value to zero.
-
-      Assert that the VIO timeout is either positive or set to infinite.
-    */
-    DBUG_ASSERT(which || vio->read_timeout);
-    DBUG_ASSERT(!which || vio->write_timeout);
-
-    if (which)
-    {
-      optname= SO_SNDTIMEO;
-      if (vio->write_timeout > 0)
-        timeout= vio->write_timeout;
-    }
-    else
-    {
-      optname= SO_RCVTIMEO;
-      if (vio->read_timeout > 0)
-        timeout= vio->read_timeout;
-    }
-
-    ret= mysql_socket_setsockopt(vio->mysql_socket, SOL_SOCKET, optname,
-	                             optval, sizeof(timeout));
-  }
-#else
   /*
     The MSG_DONTWAIT trick is not used with SSL sockets as the send and
     receive I/O operations are wrapped through SSL-specific functions
@@ -317,7 +270,6 @@ int vio_socket_timeout(Vio *vio,
     if (new_mode != old_mode)
       ret= vio_set_blocking(vio, new_mode);
   }
-#endif
 
   DBUG_RETURN(ret);
 }
@@ -337,11 +289,7 @@ int vio_fastsend(Vio * vio MY_ATTRIBUTE((unused)))
 #endif                                    /* IPTOS_THROUGHPUT */
   if (!r)
   {
-#ifdef _WIN32
-    BOOL nodelay= 1;
-#else
     int nodelay = 1;
-#endif
 
     r= mysql_socket_setsockopt(vio->mysql_socket, IPPROTO_TCP, TCP_NODELAY,
                   IF_WIN((const char*), (void*)) &nodelay,
@@ -928,13 +876,7 @@ vio_socket_connect(Vio *vio, struct sockaddr *addr, socklen_t len, int timeout)
   /* Initiate the connection. */
   ret= mysql_socket_connect(vio->mysql_socket, addr, len);
 
-#ifdef _WIN32
-  wait= (ret == SOCKET_ERROR) &&
-        (WSAGetLastError() == WSAEINPROGRESS ||
-         WSAGetLastError() == WSAEWOULDBLOCK);
-#else
   wait= (ret == -1) && (errno == EINPROGRESS || errno == EALREADY);
-#endif
 
   /*
     The connection is in progress. The vio_io_wait() call can be used
@@ -966,11 +908,7 @@ vio_socket_connect(Vio *vio, struct sockaddr *addr, socklen_t len, int timeout)
     */
     if (!(ret= mysql_socket_getsockopt(vio->mysql_socket, SOL_SOCKET, SO_ERROR, optval, &optlen)))
     {
-#ifdef _WIN32
-      WSASetLastError(error);
-#else
       errno= error;
-#endif
       ret= MY_TEST(error);
     }
   }
@@ -1087,15 +1025,7 @@ ssize_t vio_pending(Vio *vio)
 
 my_bool vio_is_no_name_error(int err_code)
 {
-#ifdef _WIN32
-
-  return err_code == WSANO_DATA || err_code == EAI_NONAME;
-
-#else
-
   return err_code == EAI_NONAME;
-
-#endif
 }
 
 

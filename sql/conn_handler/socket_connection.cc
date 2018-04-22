@@ -196,6 +196,7 @@ public:
   This class abstracts the info. about TCP/IP socket mode of communication with
   the server.
 */
+// flyyear tcp/ip连接类继承Channel_info
 class Channel_info_tcpip_socket : public Channel_info
 {
   // connect socket object
@@ -796,6 +797,7 @@ Mysqld_socket_listener::Mysqld_socket_listener(std::string bind_addr_str,
 bool Mysqld_socket_listener::setup_listener()
 {
   // Setup tcp socket listener
+  // flyyear 进行socket的绑定
   if (m_tcp_port)
   {
     TCP_socket tcp_socket(m_bind_addr_str, m_tcp_port,
@@ -845,7 +847,7 @@ bool Mysqld_socket_listener::setup_listener()
   return false;
 }
 
-
+// flyyear 这面接受通过上面的类模版，对连接进行处理
 Channel_info* Mysqld_socket_listener::listen_for_connection_event()
 {
 #ifdef HAVE_POLL
@@ -977,6 +979,7 @@ Channel_info* Mysqld_socket_listener::listen_for_connection_event()
   }
 #endif // HAVE_LIBWRAP
 
+  // flyyear 定义且初始化Channel_info变量
   Channel_info* channel_info= NULL;
   if (is_unix_socket)
     channel_info= new (std::nothrow) Channel_info_local_socket(connect_sock);

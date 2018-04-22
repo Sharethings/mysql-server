@@ -31,6 +31,8 @@ class THD;
   This class represents the connection handling functionality
   that each connection is being handled in a single thread
 */
+// flyyear 继承虚基类Connection_handler 实现多态
+// 每个连接在单个线程里面处理的方法
 class Per_thread_connection_handler : public Connection_handler
 {
   Per_thread_connection_handler(const Per_thread_connection_handler&);

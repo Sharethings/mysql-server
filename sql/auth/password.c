@@ -321,6 +321,7 @@ scramble(char *to, const char *message, const char *password)
     !0  password is invalid
 */
 
+// flyyear 对客户端发来的toke进行验证
 my_bool
 check_scramble_sha1(const uchar *scramble_arg, const char *message,
                     const uint8 *hash_stage2)

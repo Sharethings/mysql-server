@@ -114,10 +114,6 @@ PSI_memory_key key_memory_MYSQL_ROW;
 PSI_memory_key key_memory_MYSQL_state_change_info;
 PSI_memory_key key_memory_MYSQL_HANDSHAKE;
 
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-PSI_memory_key key_memory_create_shared_memory;
-#endif /* _WIN32 && ! EMBEDDED_LIBRARY */
-
 #ifdef HAVE_PSI_INTERFACE
 /*
   This code is common to the client and server,
@@ -128,9 +124,6 @@ PSI_memory_key key_memory_create_shared_memory;
 
 static PSI_memory_info all_client_memory[]=
 {
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  { &key_memory_create_shared_memory, "create_shared_memory", 0},
-#endif /* _WIN32 && ! EMBEDDED_LIBRARY */
 
   { &key_memory_mysql_options, "mysql_options", 0},
   { &key_memory_MYSQL_DATA, "MYSQL_DATA", 0},
@@ -157,10 +150,6 @@ char		*mysql_unix_port= 0;
 const char	*unknown_sqlstate= "HY000";
 const char	*not_error_sqlstate= "00000";
 const char	*cant_connect_sqlstate= "08001";
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-char		 *shared_memory_base_name= 0;
-const char 	*def_shared_memory_base_name= default_shared_memory_base_name;
-#endif
 
 ulong g_net_buffer_length= 8192;
 ulong g_max_allowed_packet= 1024L*1024L*1024L;
@@ -205,45 +194,6 @@ static int get_vio_connect_timeout(MYSQL *mysql)
 
   return timeout_ms;
 }
-
-
-#ifdef _WIN32
-
-/**
-  Convert the connect timeout option to a timeout value for WIN32
-  synchronization functions.
-
-  @remark Specific for WIN32 connection methods shared memory and
-          named pipe.
-
-  @param mysql  Connection handle (client side).
-
-  @return The timeout value in milliseconds, or INFINITE if no timeout.
-*/
-
-static DWORD get_win32_connect_timeout(MYSQL *mysql)
-{
-  DWORD timeout_ms;
-  uint timeout_sec;
-
-  /*
-    A timeout of 0 means no timeout. Also, the connect_timeout
-    option value is in seconds, while WIN32 timeouts are in
-    milliseconds. Hence, check for a possible overflow. In case
-    of overflow, set to no timeout.
-  */
-  timeout_sec= mysql->options.connect_timeout;
-
-  if (!timeout_sec || (timeout_sec > INT_MAX/1000))
-    timeout_ms= INFINITE;
-  else
-    timeout_ms= (DWORD) (timeout_sec * 1000);
-
-  return timeout_ms;
-}
-
-#endif
-
 
 /**
   Set the internal error message to mysql handler
@@ -340,78 +290,6 @@ void set_mysql_extended_error(MYSQL *mysql, int errcode,
   Create a named pipe connection
 */
 
-#ifdef _WIN32
-
-static HANDLE create_named_pipe(MYSQL *mysql, DWORD connect_timeout,
-                                const char **arg_host,
-                                const char **arg_unix_socket)
-{
-  HANDLE hPipe=INVALID_HANDLE_VALUE;
-  char pipe_name[1024];
-  DWORD dwMode;
-  int i;
-  my_bool testing_named_pipes=0;
-  const char *host= *arg_host, *unix_socket= *arg_unix_socket;
-
-  if ( ! unix_socket || (unix_socket)[0] == 0x00)
-    unix_socket = mysql_unix_port;
-  if (!host || !strcmp(host,LOCAL_HOST))
-    host=LOCAL_HOST_NAMEDPIPE;
-
-  
-  pipe_name[sizeof(pipe_name)-1]= 0;		/* Safety if too long string */
-  strxnmov(pipe_name, sizeof(pipe_name)-1, "\\\\", host, "\\pipe\\",
-	   unix_socket, NullS);
-  DBUG_PRINT("info",("Server name: '%s'.  Named Pipe: %s", host, unix_socket));
-
-  for (i=0 ; i < 100 ; i++)			/* Don't retry forever */
-  {
-    if ((hPipe = CreateFile(pipe_name,
-			    GENERIC_READ | GENERIC_WRITE,
-			    0,
-			    NULL,
-			    OPEN_EXISTING,
-			    FILE_FLAG_OVERLAPPED,
-			    NULL )) != INVALID_HANDLE_VALUE)
-      break;
-    if (GetLastError() != ERROR_PIPE_BUSY)
-    {
-      set_mysql_extended_error(mysql, CR_NAMEDPIPEOPEN_ERROR,
-                               unknown_sqlstate, ER(CR_NAMEDPIPEOPEN_ERROR),
-                               host, unix_socket, (ulong) GetLastError());
-      return INVALID_HANDLE_VALUE;
-    }
-    /* wait for for an other instance */
-    if (!WaitNamedPipe(pipe_name, connect_timeout))
-    {
-      set_mysql_extended_error(mysql, CR_NAMEDPIPEWAIT_ERROR, unknown_sqlstate,
-                               ER(CR_NAMEDPIPEWAIT_ERROR),
-                               host, unix_socket, (ulong) GetLastError());
-      return INVALID_HANDLE_VALUE;
-    }
-  }
-  if (hPipe == INVALID_HANDLE_VALUE)
-  {
-    set_mysql_extended_error(mysql, CR_NAMEDPIPEOPEN_ERROR, unknown_sqlstate,
-                             ER(CR_NAMEDPIPEOPEN_ERROR), host, unix_socket,
-                             (ulong) GetLastError());
-    return INVALID_HANDLE_VALUE;
-  }
-  dwMode = PIPE_READMODE_BYTE | PIPE_WAIT;
-  if ( !SetNamedPipeHandleState(hPipe, &dwMode, NULL, NULL) )
-  {
-    CloseHandle( hPipe );
-    set_mysql_extended_error(mysql, CR_NAMEDPIPESETSTATE_ERROR,
-                             unknown_sqlstate, ER(CR_NAMEDPIPESETSTATE_ERROR),
-                             host, unix_socket, (ulong) GetLastError());
-    return INVALID_HANDLE_VALUE;
-  }
-  *arg_host=host ; *arg_unix_socket=unix_socket;	/* connect arg */
-  return (hPipe);
-}
-#endif
-
-
 /*
   Create new shared memory connection, return handler of connection
 
@@ -421,259 +299,6 @@ static HANDLE create_named_pipe(MYSQL *mysql, DWORD connect_timeout,
 
   @return HANDLE to the shared memory area.
 */
-
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-static HANDLE create_shared_memory(MYSQL *mysql, NET *net,
-                                   DWORD connect_timeout)
-{
-  ulong smem_buffer_length = shared_memory_buffer_length + 4;
-  /*
-    event_connect_request is event object for start connection actions
-    event_connect_answer is event object for confirm, that server put data
-    handle_connect_file_map is file-mapping object, use for create shared
-    memory
-    handle_connect_map is pointer on shared memory
-    handle_map is pointer on shared memory for client
-    event_server_wrote,
-    event_server_read,
-    event_client_wrote,
-    event_client_read are events for transfer data between server and client
-    handle_file_map is file-mapping object, use for create shared memory
-  */
-  HANDLE event_connect_request = NULL;
-  HANDLE event_connect_answer = NULL;
-  HANDLE handle_connect_file_map = NULL;
-  char *handle_connect_map = NULL;
-
-  char *handle_map = NULL;
-  HANDLE event_server_wrote = NULL;
-  HANDLE event_server_read = NULL;
-  HANDLE event_client_wrote = NULL;
-  HANDLE event_client_read = NULL;
-  HANDLE event_conn_closed = NULL;
-  HANDLE handle_file_map = NULL;
-  HANDLE connect_named_mutex = NULL;
-  ulong connect_number;
-  char connect_number_char[22], *p;
-  char *tmp= NULL;
-  char *suffix_pos;
-  DWORD error_allow = 0;
-  DWORD error_code = 0;
-  DWORD event_access_rights= SYNCHRONIZE | EVENT_MODIFY_STATE;
-  char *shared_memory_base_name = mysql->options.shared_memory_base_name;
-  static const char *name_prefixes[] = {"","Global\\"};
-  const char *prefix;
-  int i;
-
-  /*
-    If this is NULL, somebody freed the MYSQL* options.  mysql_close()
-    is a good candidate.  We don't just silently (re)set it to
-    def_shared_memory_base_name as that would create really confusing/buggy
-    behavior if the user passed in a different name on the command-line or
-    in a my.cnf.
-  */
-  DBUG_ASSERT(shared_memory_base_name != NULL);
-
-  /*
-     get enough space base-name + '_' + longest suffix we might ever send
-   */
-  if (!(tmp= (char *)my_malloc(key_memory_create_shared_memory,
-                               strlen(shared_memory_base_name) + 32L, MYF(MY_FAE))))
-    goto err;
-
-  /*
-    The name of event and file-mapping events create agree next rule:
-    shared_memory_base_name+unique_part
-    Where:
-    shared_memory_base_name is unique value for each server
-    unique_part is uniquel value for each object (events and file-mapping)
-  */
-  for (i = 0; i< array_elements(name_prefixes); i++)
-  {
-    prefix= name_prefixes[i];
-    suffix_pos = strxmov(tmp, prefix , shared_memory_base_name, "_", NullS);
-    my_stpcpy(suffix_pos, "CONNECT_REQUEST");
-    event_connect_request= OpenEvent(event_access_rights, FALSE, tmp);
-    if (event_connect_request)
-    {
-      break;
-    }
-  }
-  if (!event_connect_request)
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_REQUEST_ERROR;
-    goto err;
-  }
-  my_stpcpy(suffix_pos, "CONNECT_ANSWER");
-  if (!(event_connect_answer= OpenEvent(event_access_rights,FALSE,tmp)))
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_ANSWER_ERROR;
-    goto err;
-  }
-  my_stpcpy(suffix_pos, "CONNECT_DATA");
-  if (!(handle_connect_file_map= OpenFileMapping(FILE_MAP_WRITE,FALSE,tmp)))
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_FILE_MAP_ERROR;
-    goto err;
-  }
-  if (!(handle_connect_map= MapViewOfFile(handle_connect_file_map,
-					  FILE_MAP_WRITE,0,0,sizeof(DWORD))))
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_MAP_ERROR;
-    goto err;
-  }
-
-  my_stpcpy(suffix_pos, "CONNECT_NAMED_MUTEX");
-  connect_named_mutex= CreateMutex(NULL, TRUE, tmp);
-  if (connect_named_mutex == NULL)
-  {
-    error_allow= CR_SHARED_MEMORY_CONNECT_SET_ERROR;
-    goto err;
-  }
-
-  /* Send to server request of connection */
-  if (!SetEvent(event_connect_request))
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_SET_ERROR;
-    goto err;
-  }
-
-  /* Wait of answer from server */
-  if (WaitForSingleObject(event_connect_answer, connect_timeout) !=
-      WAIT_OBJECT_0)
-  {
-    error_allow = CR_SHARED_MEMORY_CONNECT_ABANDONED_ERROR;
-    goto err;
-  }
-
-  ReleaseMutex(connect_named_mutex);
-  CloseHandle(connect_named_mutex);
-  connect_named_mutex = NULL;
-
-  /* Get number of connection */
-  connect_number = uint4korr(handle_connect_map);/*WAX2*/
-  p= int10_to_str(connect_number, connect_number_char, 10);
-
-  /*
-    The name of event and file-mapping events create agree next rule:
-    shared_memory_base_name+unique_part+number_of_connection
-
-    Where:
-    shared_memory_base_name is uniquel value for each server
-    unique_part is uniquel value for each object (events and file-mapping)
-    number_of_connection is number of connection between server and client
-  */
-  suffix_pos = strxmov(tmp, prefix , shared_memory_base_name, "_", connect_number_char,
-		       "_", NullS);
-  my_stpcpy(suffix_pos, "DATA");
-  if ((handle_file_map = OpenFileMapping(FILE_MAP_WRITE,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_FILE_MAP_ERROR;
-    goto err2;
-  }
-  if ((handle_map = MapViewOfFile(handle_file_map,FILE_MAP_WRITE,0,0,
-				  smem_buffer_length)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_MAP_ERROR;
-    goto err2;
-  }
-
-  my_stpcpy(suffix_pos, "SERVER_WROTE");
-  if ((event_server_wrote = OpenEvent(event_access_rights,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_EVENT_ERROR;
-    goto err2;
-  }
-
-  my_stpcpy(suffix_pos, "SERVER_READ");
-  if ((event_server_read = OpenEvent(event_access_rights,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_EVENT_ERROR;
-    goto err2;
-  }
-
-  my_stpcpy(suffix_pos, "CLIENT_WROTE");
-  if ((event_client_wrote = OpenEvent(event_access_rights,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_EVENT_ERROR;
-    goto err2;
-  }
-
-  my_stpcpy(suffix_pos, "CLIENT_READ");
-  if ((event_client_read = OpenEvent(event_access_rights,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_EVENT_ERROR;
-    goto err2;
-  }
-
-  my_stpcpy(suffix_pos, "CONNECTION_CLOSED");
-  if ((event_conn_closed = OpenEvent(event_access_rights,FALSE,tmp)) == NULL)
-  {
-    error_allow = CR_SHARED_MEMORY_EVENT_ERROR;
-    goto err2;
-  }
-  /*
-    Set event that server should send data
-  */
-  SetEvent(event_server_read);
-
-err2:
-  if (error_allow == 0)
-  {
-    net->vio= vio_new_win32shared_memory(handle_file_map,handle_map,
-                                         event_server_wrote,
-                                         event_server_read,event_client_wrote,
-                                         event_client_read,event_conn_closed);
-  }
-  else
-  {
-    error_code = GetLastError();
-    if (event_server_read)
-      CloseHandle(event_server_read);
-    if (event_server_wrote)
-      CloseHandle(event_server_wrote);
-    if (event_client_read)
-      CloseHandle(event_client_read);
-    if (event_client_wrote)
-      CloseHandle(event_client_wrote);
-    if (event_conn_closed)
-      CloseHandle(event_conn_closed);
-    if (handle_map)
-      UnmapViewOfFile(handle_map);
-    if (handle_file_map)
-      CloseHandle(handle_file_map);
-  }
-err:
-  my_free(tmp);
-  if (error_allow)
-    error_code = GetLastError();
-  if (event_connect_request)
-    CloseHandle(event_connect_request);
-  if (event_connect_answer)
-    CloseHandle(event_connect_answer);
-  if (handle_connect_map)
-    UnmapViewOfFile(handle_connect_map);
-  if (handle_connect_file_map)
-    CloseHandle(handle_connect_file_map);
-  if (error_allow)
-  {
-    if (connect_named_mutex)
-    {
-      ReleaseMutex(connect_named_mutex);
-      CloseHandle(connect_named_mutex);
-    }
-
-    if (error_allow == CR_SHARED_MEMORY_EVENT_ERROR)
-      set_mysql_extended_error(mysql, error_allow, unknown_sqlstate,
-                               ER(error_allow), suffix_pos, error_code);
-    else
-      set_mysql_extended_error(mysql, error_allow, unknown_sqlstate,
-                               ER(error_allow), error_code);
-    return(INVALID_HANDLE_VALUE);
-  }
-  return(handle_map);
-}
-#endif
 
 /*
   Free all memory acquired to store state change information.
@@ -1184,7 +809,7 @@ cli_safe_read_with_ok(MYSQL *mysql, my_bool parse_ok,
   @retval The length of the packet that was read or packet_error in case of
           error. In case of error its description is stored in mysql handle.
 */
-// feinian #define BOOLEAN my_bool
+// flyyear #define BOOLEAN my_bool
 ulong cli_safe_read(MYSQL *mysql, my_bool *is_data_packet)
 {
   return cli_safe_read_with_ok(mysql, 0, is_data_packet);
@@ -1522,16 +1147,6 @@ static void cli_flush_use_result(MYSQL *mysql, my_bool flush_all_results)
   }
   DBUG_VOID_RETURN;
 }
-
-
-#ifdef _WIN32
-static my_bool is_NT(void)
-{
-  char *os=getenv("OS");
-  return (os && !strcmp(os, "Windows_NT")) ? 1 : 0;
-}
-#endif
-
 
 #ifdef CHECK_LICENSE
 /**
@@ -1948,12 +1563,6 @@ void mysql_read_default_options(struct st_mysql_options *options,
           }
           break;
         case OPT_shared_memory_base_name:
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-          if (options->shared_memory_base_name != def_shared_memory_base_name)
-            my_free(options->shared_memory_base_name);
-          options->shared_memory_base_name=my_strdup(key_memory_mysql_options,
-                                                     opt_arg,MYF(MY_WME));
-#endif
           break;
 	case OPT_multi_results:
 	  options->client_flag|= CLIENT_MULTI_RESULTS;
@@ -2485,9 +2094,6 @@ mysql_init(MYSQL *mysql)
   mysql->options.client_flag|= CLIENT_LOCAL_FILES;
 #endif
 
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  mysql->options.shared_memory_base_name= (char*) def_shared_memory_base_name;
-#endif
 
   mysql->options.methods_to_use= MYSQL_OPT_GUESS_CONNECTION;
   mysql->options.report_data_truncation= TRUE;  /* default */
@@ -2831,60 +2437,6 @@ typedef struct str2str_st
 
 const MY_CSET_OS_NAME charsets[]=
 {
-#ifdef _WIN32
-  {"cp437",          "cp850",    my_cs_approx},
-  {"cp850",          "cp850",    my_cs_exact},
-  {"cp852",          "cp852",    my_cs_exact},
-  {"cp858",          "cp850",    my_cs_approx},
-  {"cp866",          "cp866",    my_cs_exact},
-  {"cp874",          "tis620",   my_cs_approx},
-  {"cp932",          "cp932",    my_cs_exact},
-  {"cp936",          "gbk",      my_cs_approx},
-  {"cp949",          "euckr",    my_cs_approx},
-  {"cp950",          "big5",     my_cs_exact},
-  {"cp1200",         "utf16le",  my_cs_unsupp},
-  {"cp1201",         "utf16",    my_cs_unsupp},
-  {"cp1250",         "cp1250",   my_cs_exact},
-  {"cp1251",         "cp1251",   my_cs_exact},
-  {"cp1252",         "latin1",   my_cs_exact},
-  {"cp1253",         "greek",    my_cs_exact},
-  {"cp1254",         "latin5",   my_cs_exact},
-  {"cp1255",         "hebrew",   my_cs_approx},
-  {"cp1256",         "cp1256",   my_cs_exact},
-  {"cp1257",         "cp1257",   my_cs_exact},
-  {"cp10000",        "macroman", my_cs_exact},
-  {"cp10001",        "sjis",     my_cs_approx},
-  {"cp10002",        "big5",     my_cs_approx},
-  {"cp10008",        "gb2312",   my_cs_approx},
-  {"cp10021",        "tis620",   my_cs_approx},
-  {"cp10029",        "macce",    my_cs_exact},
-  {"cp12001",        "utf32",    my_cs_unsupp},
-  {"cp20107",        "swe7",     my_cs_exact},
-  {"cp20127",        "latin1",   my_cs_approx},
-  {"cp20866",        "koi8r",    my_cs_exact},
-  {"cp20932",        "ujis",     my_cs_exact},
-  {"cp20936",        "gb2312",   my_cs_approx},
-  {"cp20949",        "euckr",    my_cs_approx},
-  {"cp21866",        "koi8u",    my_cs_exact},
-  {"cp28591",        "latin1",   my_cs_approx},
-  {"cp28592",        "latin2",   my_cs_exact},
-  {"cp28597",        "greek",    my_cs_exact},
-  {"cp28598",        "hebrew",   my_cs_exact},
-  {"cp28599",        "latin5",   my_cs_exact},
-  {"cp28603",        "latin7",   my_cs_exact},
-#ifdef UNCOMMENT_THIS_WHEN_WL_4579_IS_DONE
-  {"cp28605",        "latin9",   my_cs_exact},
-#endif
-  {"cp38598",        "hebrew",   my_cs_exact},
-  {"cp51932",        "ujis",     my_cs_exact},
-  {"cp51936",        "gb2312",   my_cs_exact},
-  {"cp51949",        "euckr",    my_cs_exact},
-  {"cp51950",        "big5",     my_cs_exact},
-  {"cp54936",        "gb18030",  my_cs_exact},
-  {"cp65001",        "utf8",     my_cs_exact},
-
-#else /* not Windows */
-
   {"646",            "latin1",   my_cs_approx}, /* Default on Solaris */
   {"ANSI_X3.4-1968", "latin1",   my_cs_approx},
   {"ansi1251",       "cp1251",   my_cs_exact},
@@ -2965,7 +2517,6 @@ const MY_CSET_OS_NAME charsets[]=
 
   {"utf8",           "utf8",     my_cs_exact},
   {"utf-8",          "utf8",     my_cs_exact},
-#endif
   {NULL,             NULL,       0}
 };
 
@@ -3454,11 +3005,11 @@ mysql_fill_packet_header(MYSQL *mysql, char *buff,
   @param  db      The client flag as specified by the client app
   */
 
-// feinian 这面计算客户端的权能标志
+// flyyear 这面计算客户端的权能标志
 static void
 cli_calculate_client_flag(MYSQL *mysql, const char *db, ulong client_flag)
 {
-  DBUG_PRINT("flyyear",("before cli_calculate_client_flag server capability: %0x, client_flag %0x",mysql->server_capabilities, mysql->client_flag));
+  DBUG_PRINT("flyyear",("before cli_calculate_client_flag server capability: %0x, client_flag %0x, client_flag is %0x, options client_flag is %0x",mysql->server_capabilities, mysql->client_flag, client_flag, mysql->options.client_flag));
   mysql->client_flag= client_flag;
   mysql->client_flag|= mysql->options.client_flag;
   mysql->client_flag|= CLIENT_CAPABILITIES;
@@ -3478,8 +3029,9 @@ cli_calculate_client_flag(MYSQL *mysql, const char *db, ulong client_flag)
     mysql->client_flag&= ~CLIENT_CONNECT_WITH_DB;
 
   /* Remove options that server doesn't support */
-  // feinian 这面直接把服务器的权能标志与？
-  
+  // feinian
+  // 这面客户端先保留CLIENT_COMPRESS,CLIENT_SSL,CLIENT_PROTOCOL_41,然后和server_cppabilities进行或，最后与客户端的进行与
+  // 其实这面的客户端和服务器权能标志的只进行上面三个的支持与否的判断
   DBUG_PRINT("flyyear", ("after & client_flag is %0x, result is %0x", mysql->client_flag,  ~(CLIENT_COMPRESS | CLIENT_SSL | CLIENT_PROTOCOL_41) | mysql->server_capabilities));
   mysql->client_flag= mysql->client_flag &
     (~(CLIENT_COMPRESS | CLIENT_SSL | CLIENT_PROTOCOL_41)
@@ -3667,6 +3219,7 @@ error:
   @retval 0 ok
   @retval 1 error
 */
+// flyyear 客户端发送服务器认证时的包
 static int send_client_reply_packet(MCPVIO_EXT *mpvio,
                                     const uchar *data, int data_len)
 {
@@ -3692,7 +3245,7 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   /* The client_flags is already calculated. Just fill in the packet header */
   end= mysql_fill_packet_header(mysql, buff, buff_size);
 
-  DBUG_PRINT("info",("Server version = '%s'  capabilites: %lu  status: %u  client_flag: %lu",
+  DBUG_PRINT("info",("Server version = '%s'  capabilites: %0x status: %u  client_flag: %0x",
 		     mysql->server_version, mysql->server_capabilities,
 		     mysql->server_status, mysql->client_flag));
 
@@ -3893,18 +3446,6 @@ void mpvio_info(Vio *vio, MYSQL_PLUGIN_VIO_INFO *info)
       info->socket= (int)vio_fd(vio);
       return;
     }
-#ifdef _WIN32
-  case VIO_TYPE_NAMEDPIPE:
-    info->protocol= MYSQL_VIO_PIPE;
-    info->handle= vio->hPipe;
-    return;
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  case VIO_TYPE_SHARED_MEMORY:
-    info->protocol= MYSQL_VIO_MEMORY;
-    info->handle= vio->handle_file_map; /* or what ? */
-    return;
-#endif
-#endif
   default: DBUG_ASSERT(0);
   }
 }
@@ -3953,6 +3494,7 @@ static my_bool check_plugin_enabled(MYSQL *mysql, auth_plugin_t *plugin)
   @retval 0 ok
   @retval 1 error
 */
+// flyyear 这面会根据插件的不同进行不同的验证方法
 int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
                     const char *data_plugin, const char *db)
 {
@@ -3995,6 +3537,7 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
   mpvio.mysql_change_user= data_plugin == 0;
   mpvio.cached_server_reply.pkt= (uchar*)data;
   mpvio.cached_server_reply.pkt_len= data_len;
+  // flyyear 这面的read_packet、write_packet和info都是函数指针
   mpvio.read_packet= client_mpvio_read_packet;
   mpvio.write_packet= client_mpvio_write_packet;
   mpvio.info= client_mpvio_info;
@@ -4005,6 +3548,8 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
 
   MYSQL_TRACE(AUTH_PLUGIN, mysql, (auth_plugin->name));
 
+  // flyyear 进行用户验证
+  // 这面调用相应的插件的认证方式，默认调用native_password_auth_client的函数
   res= auth_plugin->authenticate_user((struct st_plugin_vio *)&mpvio, mysql);
   DBUG_PRINT ("info", ("authenticate_user returned %s", 
                        res == CR_OK ? "CR_OK" : 
@@ -4036,6 +3581,7 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
   }
 
   /* read the OK packet (or use the cached value in mysql->net.read_pos */
+  // flyyear 这面读取认证的最后从服务器发送过来的包
   if (res == CR_OK)
     pkt_length= (*mysql->methods->read_change_user_result)(mysql);
   else /* res == CR_OK_HANDSHAKE_COMPLETE */
@@ -4153,23 +3699,13 @@ set_connect_attributes(MYSQL *mysql, char *buff, size_t buf_len)
                       "_os", SYSTEM_TYPE);
   rc+= mysql_options4(mysql, MYSQL_OPT_CONNECT_ATTR_ADD,
                       "_platform", MACHINE_TYPE);
-#ifdef _WIN32
-  my_snprintf(buff, buf_len, "%lu", (ulong) GetCurrentProcessId());
-#else
   my_snprintf(buff, buf_len, "%lu", (ulong) getpid());
-#endif
   rc+= mysql_options4(mysql, MYSQL_OPT_CONNECT_ATTR_ADD, "_pid", buff);
-
-#ifdef _WIN32
-  my_snprintf(buff, buf_len, "%lu", (ulong) GetCurrentThreadId());
-  rc+= mysql_options4(mysql, MYSQL_OPT_CONNECT_ATTR_ADD, "_thread", buff);
-#endif
-
   return rc > 0 ? 1 : 0;
 }
 
 // flyyear 这面是根据上面的宏进行调用的
-
+// 这面用到的是mysql_real_connect, 即这个函数的名字
 MYSQL * STDCALL 
 CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
 		       const char *passwd, const char *db,
@@ -4184,9 +3720,6 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   ulong		pkt_length;
   NET		*net= &mysql->net;
   my_bool       scramble_buffer_allocated= FALSE;
-#ifdef _WIN32
-  HANDLE	hPipe=INVALID_HANDLE_VALUE;
-#endif
 #ifdef HAVE_SYS_UN_H
   struct	sockaddr_un UNIXaddr;
 #endif
@@ -4212,6 +3745,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   mysql->client_flag=0;			/* For handshake */
 
   /* use default options */
+  // flyyear 默认的选项
   if (mysql->options.my_cnf_file || mysql->options.my_cnf_group)
   {
     mysql_read_default_options(&mysql->options,
@@ -4255,48 +3789,10 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   MYSQL_TRACE_STAGE(mysql, CONNECTING);
   MYSQL_TRACE(CONNECTING, mysql, ());
 
+  // flyyear 上面是对一些参数的判断,比如host、port、password等
   /*
     Part 0: Grab a socket and connect it to the server
   */
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  if ((!mysql->options.protocol ||
-       mysql->options.protocol == MYSQL_PROTOCOL_MEMORY) &&
-      (!host || !strcmp(host,LOCAL_HOST)))
-  {
-    HANDLE handle_map;
-    DBUG_PRINT("info", ("Using shared memory"));
-
-    handle_map= create_shared_memory(mysql, net,
-                                     get_win32_connect_timeout(mysql));
-
-    if (handle_map == INVALID_HANDLE_VALUE)
-    {
-      DBUG_PRINT("error",
-		 ("host: '%s'  socket: '%s'  shared memory: %s  have_tcpip: %d",
-		  host ? host : "<null>",
-		  unix_socket ? unix_socket : "<null>",
-		  (int) mysql->options.shared_memory_base_name,
-		  (int) have_tcpip));
-      if (mysql->options.protocol == MYSQL_PROTOCOL_MEMORY)
-	goto error;
-
-      /*
-        Try also with PIPE or TCP/IP. Clear the error from
-        create_shared_memory().
-      */
-
-      net_clear_error(net);
-    }
-    else
-    {
-      mysql->options.protocol=MYSQL_PROTOCOL_MEMORY;
-      unix_socket = 0;
-      host=mysql->options.shared_memory_base_name;
-      my_snprintf(host_info=buff, sizeof(buff)-1,
-                  ER(CR_SHARED_MEMORY_CONNECTION), host);
-    }
-  }
-#endif /* _WIN32 && !EMBEDDED_LIBRARY */
 #if defined(HAVE_SYS_UN_H)
   if (!net->vio &&
       (!mysql->options.protocol ||
@@ -4349,35 +3845,6 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
       goto error;
     }
     mysql->options.protocol=MYSQL_PROTOCOL_SOCKET;
-  }
-#elif defined(_WIN32)
-  if (!net->vio &&
-      (mysql->options.protocol == MYSQL_PROTOCOL_PIPE ||
-       (host && !strcmp(host,LOCAL_HOST_NAMEDPIPE)) ||
-       (! have_tcpip && (unix_socket || !host && is_NT()))))
-  {
-    hPipe= create_named_pipe(mysql, get_win32_connect_timeout(mysql),
-                             &host, &unix_socket);
-
-    if (hPipe == INVALID_HANDLE_VALUE)
-    {
-      DBUG_PRINT("error",
-		 ("host: '%s'  socket: '%s'  have_tcpip: %d",
-		  host ? host : "<null>",
-		  unix_socket ? unix_socket : "<null>",
-		  (int) have_tcpip));
-      if (mysql->options.protocol == MYSQL_PROTOCOL_PIPE ||
-	  (host && !strcmp(host,LOCAL_HOST_NAMEDPIPE)) ||
-	  (unix_socket && !strcmp(unix_socket,MYSQL_NAMEDPIPE)))
-	goto error;
-      /* Try also with TCP/IP */
-    }
-    else
-    {
-      net->vio= vio_new_win32pipe(hPipe);
-      my_snprintf(host_info=buff, sizeof(buff)-1,
-                  ER(CR_NAMEDPIPE_CONNECTION), unix_socket);
-    }
   }
 #endif
   DBUG_PRINT("info", ("net->vio: %p  protocol: %d",
@@ -4537,6 +4004,8 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
       }
 
       DBUG_PRINT("info", ("Connect socket"));
+      // flyyear 这面进行tcp的连接
+      // 从抓包来看，操作完vio_socket_connet后tcp连接已经建立，并且server端也发了第一个握手包
       status= vio_socket_connect(net->vio, t_res->ai_addr,
                                  (socklen_t)t_res->ai_addrlen,
                                  get_vio_connect_timeout(mysql));
@@ -4629,7 +4098,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     Part 1: Connection established, read and parse first packet
   */
   DBUG_PRINT("info", ("Read first packet."));
- // feinian 这面客户端开始读包
+ // flyyear 上面网络初始化等均完成，下面客户端开始读包
   if ((pkt_length=cli_safe_read(mysql, NULL)) == packet_error)
   {
     if (mysql->net.last_errno == CR_SERVER_LOST)
@@ -4641,11 +4110,12 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   }
   pkt_end= (char*)net->read_pos + pkt_length;
   /* Check if version of protocol matches current one */
+  // flyyear 读取包后进行各种判断
   mysql->protocol_version= net->read_pos[0];
   DBUG_DUMP("packet",(uchar*) net->read_pos,10);
   DBUG_PRINT("info",("mysql protocol version %d, server=%d",
 		     PROTOCOL_VERSION, mysql->protocol_version));
-  DBUG_PRINT("flyyear", ("read protocal server capabilities is %lu, client flag is %lu", mysql->server_capabilities, mysql->client_flag));
+  DBUG_PRINT("flyyear", ("read protocal server capabilities is %0x, client flag is %0x", mysql->server_capabilities, mysql->client_flag));
   if (mysql->protocol_version != PROTOCOL_VERSION)
   {
     set_mysql_extended_error(mysql, CR_VERSION_ERROR, unknown_sqlstate,
@@ -4660,7 +4130,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     Scramble is split into two parts because old clients do not understand
     long scrambles; here goes the first part.
   */
-  // feinian 在服务器发给客户端第一个包的协议, 里面关于scramble有三个部分
+  // flyyear 在服务器发给客户端第一个包的协议, 里面关于scramble有三个部分
   // 1. 八个字节 2. 一个字节的挑战长度（未使用）3. 后面的scramble最少为12个字节
   // 看上面的注释，意思是老得客户端看不懂后面的最少12个字节的scramble
   scramble_data= end;
@@ -4669,7 +4139,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   end+= scramble_data_len;
 
   if (pkt_end >= end + 1)
-      // feinian 这面读取的是低两个字节的权能标志
+      // flyyear 这面读取的是低两个字节的权能标志
     mysql->server_capabilities=uint2korr((uchar*) end);
   if (pkt_end >= end + 18)
   {
@@ -4677,12 +4147,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     // 这面读取一个字节的编码、两个字节的服务器状态、两个字节的高16位权能标志
     mysql->server_language=end[2];
     mysql->server_status=uint2korr((uchar*) end + 3);
-    DBUG_PRINT("flyyear", ("low 16 capability is %lu", mysql->server_capabilities));
-    DBUG_PRINT("flyyear", ("low 16 capability is %0x", mysql->server_capabilities));
-    DBUG_PRINT("flyyear", ("high 16 capability is %lu, << 16 is %lu", uint2korr((uchar*) end + 5), uint2korr((uchar*) end + 5) << 16));
-    DBUG_PRINT("flyyear", ("high 16 capability is %0x, << 16 is %0x", uint2korr((uchar*) end + 5), uint2korr((uchar*) end + 5) << 16));
     mysql->server_capabilities|= uint2korr((uchar*) end + 5) << 16;
-    DBUG_PRINT("flyyear", ("1 server capabilities is %lu", mysql->server_capabilities));
     DBUG_PRINT("flyyear", ("1 server capabilities is %0x", mysql->server_capabilities));
     pkt_scramble_len= end[7];
     if (pkt_scramble_len < 0)
@@ -4698,6 +4163,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     goto error;
 
   /* Save connection information */
+  // flyyear 保留连接的信息
   if (!my_multi_malloc(key_memory_MYSQL,
                        MYF(0),
 		       &mysql->host_info, (uint) strlen(host_info)+1,
@@ -4757,15 +4223,6 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   MYSQL_TRACE(INIT_PACKET_RECEIVED, mysql, (pkt_length, net->read_pos));
   MYSQL_TRACE_STAGE(mysql, AUTHENTICATE);
 
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  if ((mysql->options.extension &&
-       mysql->options.extension->ssl_mode <= SSL_MODE_PREFERRED) &&
-      (mysql->options.protocol == MYSQL_PROTOCOL_MEMORY ||
-       mysql->options.protocol == MYSQL_PROTOCOL_PIPE))
-  {
-    mysql->options.extension->ssl_mode= SSL_MODE_DISABLED;
-  }
-#endif
   /* try and bring up SSL if possible */
   cli_calculate_client_flag(mysql, db, client_flag);
 
@@ -4798,7 +4255,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   /*
     Part 2: invoke the plugin to send the authentication data to the server
   */
-
+    // flyyear 这面根据插件发送验证数据给服务器
   if (run_plugin_auth(mysql, scramble_buffer, scramble_data_len,
                       scramble_plugin, db))
     goto error;
@@ -5006,10 +4463,6 @@ void mysql_close_free_options(MYSQL *mysql)
 #if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
   mysql_ssl_free(mysql);
 #endif /* HAVE_OPENSSL && !EMBEDDED_LIBRARY */
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  if (mysql->options.shared_memory_base_name != def_shared_memory_base_name)
-    my_free(mysql->options.shared_memory_base_name);
-#endif /* _WIN32 && !EMBEDDED_LIBRARY */
   if (mysql->options.extension)
   {
     my_free(mysql->options.extension->plugin_dir);
@@ -5494,12 +4947,6 @@ mysql_options(MYSQL *mysql,enum mysql_option option, const void *arg)
     mysql->options.protocol= *(uint*) arg;
     break;
   case MYSQL_SHARED_MEMORY_BASE_NAME:
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-    if (mysql->options.shared_memory_base_name != def_shared_memory_base_name)
-      my_free(mysql->options.shared_memory_base_name);
-    mysql->options.shared_memory_base_name=my_strdup(key_memory_mysql_options,
-                                                     arg,MYF(MY_WME));
-#endif
     break;
   case MYSQL_OPT_USE_REMOTE_CONNECTION:
   case MYSQL_OPT_USE_EMBEDDED_CONNECTION:
@@ -6196,7 +5643,7 @@ int STDCALL mysql_set_character_set(MYSQL *mysql, const char *cs_name)
   client authentication plugin that does native MySQL authentication
   using a 20-byte (4.1+) scramble
 */
-// feinian mysql_native_password认证方式
+// flyyear mysql_native_password认证方式
 static int native_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql)
 {
   int pkt_len;
@@ -6228,12 +5675,15 @@ static int native_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql)
     mysql->scramble[SCRAMBLE_LENGTH] = 0;
   }
 
+  // flyyear 如果是密码登录
   if (mysql->passwd[0])
   {
     char scrambled[SCRAMBLE_LENGTH + 1];
     DBUG_PRINT("info", ("sending scramble"));
+    // flyyear 生成token
     scramble(scrambled, (char*)pkt, mysql->passwd);
     DBUG_PRINT("flyyear", ("before write_packet servercapabilities is %lu, client flag is %lu", mysql->server_capabilities, mysql->client_flag));
+    // flyyear 这面发送token
     if (vio->write_packet(vio, (uchar*)scrambled, SCRAMBLE_LENGTH))
       DBUG_RETURN(CR_ERROR);
   }

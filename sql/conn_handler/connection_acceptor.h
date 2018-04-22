@@ -31,6 +31,10 @@
   callback functor object would on receiving connection event
   from the client to process the connection.
 */
+// flyyear 定义一个类模版
+// 类模版允许用户为类定义一种模式，使得类中的某些数据成员、默写成员函数的参数、某些成员函数的返回值，能够取任意类型（包括系统预定义的和用户自定义的)
+// 根据下面的模版的参数调用的函数情况，使用这个类模版的类需要完成三个函数
+// setup_listener()、listen_for_connection_event()、close_listener()
 template <typename Listener> class Connection_acceptor
 {
   Listener *m_listener;
@@ -58,9 +62,11 @@ public:
   /**
     Connection acceptor loop to accept connections from clients.
   */
+  // flyyear 这面一个循环来接受客户端的连接
   void connection_event_loop()
   {
     Connection_handler_manager *mgr= Connection_handler_manager::get_instance();
+    // flyyear 这面的abort_loop是一个全局变量 且是volatile
     while (!abort_loop)
     {
       Channel_info *channel_info= m_listener->listen_for_connection_event();

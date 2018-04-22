@@ -195,16 +195,10 @@ inline void setup_fpu()
     point, double values will be stored and processed in 64 bits anyway.
   */
 #if defined(__i386__) && !defined(__SSE2_MATH__)
-#if defined(_WIN32)
-#if !defined(_WIN64)
-  _control87(_PC_53, MCW_PC);
-#endif /* !_WIN64 */
-#else /* !_WIN32 */
   fpu_control_t cw;
   _FPU_GETCW(cw);
   cw= (cw & ~_FPU_EXTENDED) | _FPU_DOUBLE;
   _FPU_SETCW(cw);
-#endif /* _WIN32 && */
 #endif /* __i386__ */
 
 }
@@ -249,19 +243,10 @@ arg_cmp_func Arg_comparator::comparator_matrix[5][2] =
 
 #ifdef HAVE_PSI_INTERFACE
 #ifndef EMBEDDED_LIBRARY
-#if defined(_WIN32)
-static PSI_thread_key key_thread_handle_con_namedpipes;
-static PSI_thread_key key_thread_handle_con_sharedmem;
-static PSI_thread_key key_thread_handle_con_sockets;
-static PSI_mutex_key key_LOCK_handler_count;
-static PSI_cond_key key_COND_handler_count;
-static PSI_thread_key key_thread_handle_shutdown;
-#else
 static PSI_mutex_key key_LOCK_socket_listener_active;
 static PSI_cond_key key_COND_socket_listener_active;
 static PSI_mutex_key key_LOCK_start_signal_handler;
 static PSI_cond_key key_COND_start_signal_handler;
-#endif // _WIN32
 #endif // !EMBEDDED_LIBRARY
 #endif /* HAVE_PSI_INTERFACE */
 
@@ -353,9 +338,6 @@ ulong log_error_verbosity= 3; // have a non-zero value during early start-up
 my_bool show_compatibility_56= TRUE;
 #endif /* MYSQL_VERSION_ID >= 50800 */
 
-#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
-ulong slow_start_timeout;
-#endif
 
 my_bool opt_bootstrap= 0;
 my_bool opt_initialize= 0;
@@ -749,11 +731,8 @@ void deinit_rsa_keys(void);
 int show_rsa_public_key(THD *thd, SHOW_VAR *var, char *buff);
 #endif
 
+// flyyear 这面定义全局变量
 Connection_acceptor<Mysqld_socket_listener> *mysqld_socket_acceptor= NULL;
-#ifdef _WIN32
-Connection_acceptor<Named_pipe_listener> *named_pipe_acceptor= NULL;
-Connection_acceptor<Shared_mem_listener> *shared_mem_acceptor= NULL;
-#endif
 
 Checkable_rwlock *global_sid_lock= NULL;
 Sid_map *global_sid_map= NULL;
@@ -826,27 +805,6 @@ static my_thread_t main_thread_id;
 #endif // !_WIN32
 #endif // !EMBEDDED_LIBRARY
 
-/* OS specific variables */
-
-#ifdef _WIN32
-#include <process.h>
-
-static bool windows_service= false;
-static bool use_opt_args;
-static int opt_argc;
-static char **opt_argv;
-
-#if !defined(EMBEDDED_LIBRARY)
-static mysql_mutex_t LOCK_handler_count;
-static mysql_cond_t COND_handler_count;
-static HANDLE hEventShutdown;
-char *shared_memory_base_name= default_shared_memory_base_name;
-my_bool opt_enable_shared_memory;
-static char shutdown_event_name[40];
-#include "nt_servc.h"
-static   NTService  Service;        ///< Service object for WinNT
-#endif /* EMBEDDED_LIBRARY */
-#endif /* _WIN32 */
 
 #ifndef EMBEDDED_LIBRARY
 bool mysqld_embedded=0;
@@ -1018,14 +976,6 @@ static void close_connections(void)
   // Close listeners.
   if (mysqld_socket_acceptor != NULL)
     mysqld_socket_acceptor->close_listener();
-#ifdef _WIN32
-  if (named_pipe_acceptor != NULL)
-    named_pipe_acceptor->close_listener();
-
-  if (shared_mem_acceptor != NULL)
-    shared_mem_acceptor->close_listener();
-#endif
-
   /*
     First signal all threads that it's time to die
     This will give the threads some time to gracefully abort their
@@ -1101,25 +1051,10 @@ void kill_mysql(void)
 {
   DBUG_ENTER("kill_mysql");
 
-#if defined(_WIN32)
-  {
-    if (!SetEvent(hEventShutdown))
-    {
-      DBUG_PRINT("error",("Got error: %ld from SetEvent",GetLastError()));
-    }
-    /*
-      or:
-      HANDLE hEvent=OpenEvent(0, FALSE, "MySqlShutdown");
-      SetEvent(hEventShutdown);
-      CloseHandle(hEvent);
-    */
-  }
-#else
   if (pthread_kill(signal_thread_id.thread, SIGTERM))
   {
     DBUG_PRINT("error",("Got error %d from pthread_kill",errno)); /* purecov: inspected */
   }
-#endif
   DBUG_PRINT("quit",("After pthread_kill"));
   DBUG_VOID_RETURN;
 }
@@ -1175,18 +1110,6 @@ static void mysqld_exit(int exit_code)
   destroy_error_log();
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
   shutdown_performance_schema();
-#endif
-#if defined(_WIN32)
-  if (Service.IsNT() && windows_service)
-  {
-    Service.Stop();
-  }
-  else
-  {
-    Service.SetShutdownEvent(0);
-    if (hEventShutdown)
-      CloseHandle(hEventShutdown);
-  }
 #endif
   exit(exit_code); /* purecov: inspected */
 }
@@ -1262,12 +1185,6 @@ static void free_connection_acceptors()
   delete mysqld_socket_acceptor;
   mysqld_socket_acceptor= NULL;
 
-#ifdef _WIN32
-  delete named_pipe_acceptor;
-  named_pipe_acceptor= NULL;
-  delete shared_mem_acceptor;
-  shared_mem_acceptor= NULL;
-#endif
 }
 #endif
 
@@ -1438,10 +1355,6 @@ static void clean_up_mutexes()
   mysql_mutex_destroy(&LOCK_offline_mode);
   mysql_mutex_destroy(&LOCK_default_password_lifetime);
   mysql_cond_destroy(&COND_manager);
-#ifdef _WIN32
-  mysql_cond_destroy(&COND_handler_count);
-  mysql_mutex_destroy(&LOCK_handler_count);
-#endif
 #ifndef _WIN32
   mysql_cond_destroy(&COND_socket_listener_active);
   mysql_mutex_destroy(&LOCK_socket_listener_active);
@@ -1483,11 +1396,7 @@ static void set_ports()
   }
   if (!mysqld_unix_port)
   {
-#ifdef _WIN32
-    mysqld_unix_port= (char*) MYSQL_NAMEDPIPE;
-#else
     mysqld_unix_port= (char*) MYSQL_UNIX_ADDR;
-#endif
     if ((env = getenv("MYSQL_UNIX_PORT")))
       mysqld_unix_port= env;      /* purecov: inspected */
   }
@@ -1613,7 +1522,7 @@ static void set_root(const char *path)
 }
 #endif // !_WIN32
 
-
+// flyyear 网络初始化
 static bool network_init(void)
 {
   if (opt_bootstrap)
@@ -1626,11 +1535,13 @@ static bool network_init(void)
 #else
   std::string const unix_sock_name("");
 #endif
-
+  // flyyear 这面如果没有disable_networking或者使用unix_sock登录
   if (!opt_disable_networking || unix_sock_name != "")
   {
     std::string const bind_addr_str(my_bind_addr_str ? my_bind_addr_str : "");
+    DBUG_PRINT("flyyear", ("mysqld_port is %d, mysqld_port_timeout is %d, back_log is %d ", mysqld_port, back_log, mysqld_port_timeout));
 
+    // flyyear 这面新建一个Mysqld_socket_listener对象
     Mysqld_socket_listener *mysqld_socket_listener=
       new (std::nothrow) Mysqld_socket_listener(bind_addr_str,
                                                 mysqld_port, back_log,
@@ -1639,6 +1550,8 @@ static bool network_init(void)
     if (mysqld_socket_listener == NULL)
       return true;
 
+    // flyyear
+    // 这面的Connection_acceptor是一个类模版,这面传入的模版的类型是Mysqld_socket_listener
     mysqld_socket_acceptor=
       new (std::nothrow) Connection_acceptor<Mysqld_socket_listener>(mysqld_socket_listener);
     if (mysqld_socket_acceptor == NULL)
@@ -1657,305 +1570,8 @@ static bool network_init(void)
     if (!opt_disable_networking)
       DBUG_ASSERT(report_port != 0);
   }
-#ifdef _WIN32
-  // Create named pipe
-  if (opt_enable_named_pipe)
-  {
-    std::string pipe_name= mysqld_unix_port ? mysqld_unix_port : "";
-
-    Named_pipe_listener *named_pipe_listener=
-      new (std::nothrow) Named_pipe_listener(&pipe_name);
-    if (named_pipe_listener == NULL)
-      return true;
-
-    named_pipe_acceptor=
-      new (std::nothrow) Connection_acceptor<Named_pipe_listener>(named_pipe_listener);
-    if (named_pipe_acceptor == NULL)
-    {
-      delete named_pipe_listener;
-      named_pipe_listener= NULL;
-      return true;
-    }
-
-    if (named_pipe_acceptor->init_connection_acceptor())
-      return true; // named_pipe_acceptor would be freed in unireg_abort.
-  }
-
-  // Setup shared_memory acceptor
-  if (opt_enable_shared_memory)
-  {
-    std::string shared_mem_base_name= shared_memory_base_name ? shared_memory_base_name : "";
-
-    Shared_mem_listener *shared_mem_listener=
-      new (std::nothrow) Shared_mem_listener(&shared_mem_base_name);
-    if (shared_mem_listener == NULL)
-      return true;
-
-    shared_mem_acceptor=
-      new (std::nothrow) Connection_acceptor<Shared_mem_listener>(shared_mem_listener);
-    if (shared_mem_acceptor == NULL)
-    {
-      delete shared_mem_listener;
-      shared_mem_listener= NULL;
-      return true;
-    }
-
-    if (shared_mem_acceptor->init_connection_acceptor())
-      return true; // shared_mem_acceptor would be freed in unireg_abort.
-  }
-#endif // _WIN32
   return false;
 }
-
-#ifdef _WIN32
-static uint handler_count= 0;
-
-
-static inline void decrement_handler_count()
-{
-  mysql_mutex_lock(&LOCK_handler_count);
-  handler_count--;
-  mysql_cond_signal(&COND_handler_count);
-  mysql_mutex_unlock(&LOCK_handler_count);
-}
-
-
-extern "C" void *socket_conn_event_handler(void *arg)
-{
-  my_thread_init();
-
-  Connection_acceptor<Mysqld_socket_listener> *conn_acceptor=
-    static_cast<Connection_acceptor<Mysqld_socket_listener>*>(arg);
-  conn_acceptor->connection_event_loop();
-
-  decrement_handler_count();
-  my_thread_end();
-  return 0;
-}
-
-
-extern "C" void *named_pipe_conn_event_handler(void *arg)
-{
-  my_thread_init();
-
-  Connection_acceptor<Named_pipe_listener> *conn_acceptor=
-    static_cast<Connection_acceptor<Named_pipe_listener>*>(arg);
-  conn_acceptor->connection_event_loop();
-
-  decrement_handler_count();
-  my_thread_end();
-  return 0;
-}
-
-
-extern "C" void *shared_mem_conn_event_handler(void *arg)
-{
-  my_thread_init();
-
-  Connection_acceptor<Shared_mem_listener> *conn_acceptor=
-    static_cast<Connection_acceptor<Shared_mem_listener>*>(arg);
-  conn_acceptor->connection_event_loop();
-
-  decrement_handler_count();
-  my_thread_end();
-  return 0;
-}
-
-
-void setup_conn_event_handler_threads()
-{
-  my_thread_handle hThread;
-
-  DBUG_ENTER("handle_connections_methods");
-
-  if ((!have_tcpip || opt_disable_networking) &&
-      !opt_enable_shared_memory && !opt_enable_named_pipe)
-  {
-    sql_print_error("TCP/IP, --shared-memory, or --named-pipe should be configured on NT OS");
-    unireg_abort(MYSQLD_ABORT_EXIT);        // Will not return
-  }
-
-  mysql_mutex_lock(&LOCK_handler_count);
-  handler_count=0;
-
-  if (opt_enable_named_pipe)
-  {
-    int error= mysql_thread_create(key_thread_handle_con_namedpipes,
-                                   &hThread, &connection_attrib,
-                                   named_pipe_conn_event_handler,
-                                   named_pipe_acceptor);
-    if (!error)
-      handler_count++;
-    else
-      sql_print_warning("Can't create thread to handle named pipes"
-                        " (errno= %d)", error);
-  }
-
-  if (have_tcpip && !opt_disable_networking)
-  {
-    int error= mysql_thread_create(key_thread_handle_con_sockets,
-                                   &hThread, &connection_attrib,
-                                   socket_conn_event_handler,
-                                   mysqld_socket_acceptor);
-    if (!error)
-      handler_count++;
-    else
-      sql_print_warning("Can't create thread to handle TCP/IP (errno= %d)",
-                        error);
-  }
-
-  if (opt_enable_shared_memory)
-  {
-    int error= mysql_thread_create(key_thread_handle_con_sharedmem,
-                                   &hThread, &connection_attrib,
-                                   shared_mem_conn_event_handler,
-                                   shared_mem_acceptor);
-    if (!error)
-      handler_count++;
-    else
-      sql_print_warning("Can't create thread to handle shared memory"
-                        " (errno= %d)", error);
-  }
-
-  // Block until all connection listener threads have exited.
-  while (handler_count > 0)
-    mysql_cond_wait(&COND_handler_count, &LOCK_handler_count);
-  mysql_mutex_unlock(&LOCK_handler_count);
-  DBUG_VOID_RETURN;
-}
-
-
-/*
-  On Windows, we use native SetConsoleCtrlHandler for handle events like Ctrl-C
-  with graceful shutdown.
-  Also, we do not use signal(), but SetUnhandledExceptionFilter instead - as it
-  provides possibility to pass the exception to just-in-time debugger, collect
-  dumps and potentially also the exception and thread context used to output
-  callstack.
-*/
-
-static BOOL WINAPI console_event_handler( DWORD type )
-{
-  DBUG_ENTER("console_event_handler");
-  if(type == CTRL_C_EVENT)
-  {
-     /*
-       Do not shutdown before startup is finished and shutdown
-       thread is initialized. Otherwise there is a race condition
-       between main thread doing initialization and CTRL-C thread doing
-       cleanup, which can result into crash.
-     */
-     if(hEventShutdown)
-       kill_mysql();
-     else
-       sql_print_warning("CTRL-C ignored during startup");
-     DBUG_RETURN(TRUE);
-  }
-  DBUG_RETURN(FALSE);
-}
-
-
-#ifdef DEBUG_UNHANDLED_EXCEPTION_FILTER
-#define DEBUGGER_ATTACH_TIMEOUT 120
-/*
-  Wait for debugger to attach and break into debugger. If debugger is not attached,
-  resume after timeout.
-*/
-static void wait_for_debugger(int timeout_sec)
-{
-   if(!IsDebuggerPresent())
-   {
-     int i;
-     printf("Waiting for debugger to attach, pid=%u\n",GetCurrentProcessId());
-     fflush(stdout);
-     for(i= 0; i < timeout_sec; i++)
-     {
-       Sleep(1000);
-       if(IsDebuggerPresent())
-       {
-         /* Break into debugger */
-         __debugbreak();
-         return;
-       }
-     }
-     printf("pid=%u, debugger not attached after %d seconds, resuming\n",GetCurrentProcessId(),
-       timeout_sec);
-     fflush(stdout);
-   }
-}
-#endif /* DEBUG_UNHANDLED_EXCEPTION_FILTER */
-
-LONG WINAPI my_unhandler_exception_filter(EXCEPTION_POINTERS *ex_pointers)
-{
-   static BOOL first_time= TRUE;
-   if(!first_time)
-   {
-     /*
-       This routine can be called twice, typically
-       when detaching in JIT debugger.
-       Return EXCEPTION_EXECUTE_HANDLER to terminate process.
-     */
-     return EXCEPTION_EXECUTE_HANDLER;
-   }
-   first_time= FALSE;
-#ifdef DEBUG_UNHANDLED_EXCEPTION_FILTER
-   /*
-    Unfortunately there is no clean way to debug unhandled exception filters,
-    as debugger does not stop there(also documented in MSDN)
-    To overcome, one could put a MessageBox, but this will not work in service.
-    Better solution is to print error message and sleep some minutes
-    until debugger is attached
-  */
-  wait_for_debugger(DEBUGGER_ATTACH_TIMEOUT);
-#endif /* DEBUG_UNHANDLED_EXCEPTION_FILTER */
-  __try
-  {
-    my_set_exception_pointers(ex_pointers);
-    handle_fatal_signal(ex_pointers->ExceptionRecord->ExceptionCode);
-  }
-  __except(EXCEPTION_EXECUTE_HANDLER)
-  {
-    DWORD written;
-    const char msg[] = "Got exception in exception handler!\n";
-    WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),msg, sizeof(msg)-1,
-      &written,NULL);
-  }
-  /*
-    Return EXCEPTION_CONTINUE_SEARCH to give JIT debugger
-    (drwtsn32 or vsjitdebugger) possibility to attach,
-    if JIT debugger is configured.
-    Windows Error reporting might generate a dump here.
-  */
-  return EXCEPTION_CONTINUE_SEARCH;
-}
-
-
-void my_init_signals()
-{
-  if(opt_console)
-    SetConsoleCtrlHandler(console_event_handler,TRUE);
-
-    /* Avoid MessageBox()es*/
-  _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
-  _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
-  _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
-  _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
-  _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
-  _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
-
-   /*
-     Do not use SEM_NOGPFAULTERRORBOX in the following SetErrorMode (),
-     because it would prevent JIT debugger and Windows error reporting
-     from working. We need WER or JIT-debugging, since our own unhandled
-     exception filter is not guaranteed to work in all situation
-     (like heap corruption or stack overflow)
-   */
-  SetErrorMode(SetErrorMode(0) | SEM_FAILCRITICALERRORS
-                               | SEM_NOOPENFILEERRORBOX);
-  SetUnhandledExceptionFilter(my_unhandler_exception_filter);
-}
-
-#else // !_WIN32
 
 extern "C" {
 static void empty_signal_handler(int sig MY_ATTRIBUTE((unused)))
@@ -2184,7 +1800,6 @@ extern "C" void *signal_hand(void *arg MY_ATTRIBUTE((unused)))
   return NULL;        /* purecov: deadcode */
 }
 
-#endif // !_WIN32
 #endif // !EMBEDDED_LIBRARY
 
 /**
@@ -2313,10 +1928,6 @@ const char *load_default_groups[]= {
 #endif
 "mysqld","server", MYSQL_BASE_VERSION, 0, 0};
 
-#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
-static const int load_default_groups_sz=
-sizeof(load_default_groups)/sizeof(load_default_groups[0]);
-#endif
 
 #ifndef EMBEDDED_LIBRARY
 /**
@@ -2681,13 +2292,8 @@ int init_common_variables()
   {
     struct tm tm_tmp;
     localtime_r(&server_start_time,&tm_tmp);
-#ifdef _WIN32
-    strmake(system_time_zone, _tzname[tm_tmp.tm_isdst != 0 ? 1 : 0],
-            sizeof(system_time_zone) - 1);
-#else
     strmake(system_time_zone, tzname[tm_tmp.tm_isdst != 0 ? 1 : 0],
             sizeof(system_time_zone)-1);
-#endif
 
  }
 
@@ -3231,11 +2837,6 @@ static int init_thread_environment()
                    &LOCK_group_replication_handler, MY_MUTEX_INIT_FAST);
 #ifndef EMBEDDED_LIBRARY
   Events::init_mutexes();
-#if defined(_WIN32)
-  mysql_mutex_init(key_LOCK_handler_count,
-                   &LOCK_handler_count, MY_MUTEX_INIT_FAST);
-  mysql_cond_init(key_COND_handler_count, &COND_handler_count);
-#else
   mysql_mutex_init(key_LOCK_socket_listener_active,
                    &LOCK_socket_listener_active, MY_MUTEX_INIT_FAST);
   mysql_cond_init(key_COND_socket_listener_active,
@@ -3244,7 +2845,6 @@ static int init_thread_environment()
                    &LOCK_start_signal_handler, MY_MUTEX_INIT_FAST);
   mysql_cond_init(key_COND_start_signal_handler,
                   &COND_start_signal_handler);
-#endif // _WIN32
 #endif // !EMBEDDED_LIBRARY
   /* Parameter for threads created for connections */
   (void) my_thread_attr_init(&connection_attrib);
@@ -3806,19 +3406,11 @@ static int init_server_components()
     ""                     --log-error without arguments (no '=')
     filename               --log-error=filename
   */
-#ifdef _WIN32
-  /*
-    Enable the error log file only if console option is not specified
-    and --help is not used.
-  */
-  bool log_errors_to_file= !opt_help && !opt_console;
-#else
   /*
     Enable the error log file only if --log-error=filename or --log-error
     was used. Logging to file is disabled by default unlike on Windows.
   */
   bool log_errors_to_file= !opt_help && (log_error_dest != disabled_my_option);
-#endif
 
   if (log_errors_to_file)
   {
@@ -3837,9 +3429,6 @@ static int init_server_components()
 
     if (open_error_log(errorlog_filename_buff))
       unireg_abort(MYSQLD_ABORT_EXIT);
-#ifdef _WIN32
-    FreeConsole();        // Remove window
-#endif
   }
   else
   {
@@ -4311,42 +3900,6 @@ a file name for --log-bin-index option", opt_binlog_index_name);
 
 
 #ifndef EMBEDDED_LIBRARY
-#ifdef _WIN32
-
-extern "C" void *handle_shutdown(void *arg)
-{
-  MSG msg;
-  my_thread_init();
-  /* This call should create the message queue for this thread. */
-  PeekMessage(&msg, NULL, 1, 65534,PM_NOREMOVE);
-  if (WaitForSingleObject(hEventShutdown,INFINITE)==WAIT_OBJECT_0)
-  {
-    sql_print_information(ER_DEFAULT(ER_NORMAL_SHUTDOWN), my_progname);
-    abort_loop= true;
-    close_connections();
-    my_thread_end();
-    my_thread_exit(0);
-  }
-  return 0;
-}
-
-
-static void create_shutdown_thread()
-{
-  hEventShutdown=CreateEvent(0, FALSE, FALSE, shutdown_event_name);
-  my_thread_attr_t thr_attr;
-  DBUG_ENTER("create_shutdown_thread");
-
-  my_thread_attr_init(&thr_attr);
-
-  if (my_thread_create(&shutdown_thr_handle, &thr_attr, handle_shutdown, 0))
-    sql_print_warning("Can't create thread to handle shutdown requests"
-                      " (errno= %d)", errno);
-  my_thread_attr_destroy(&thr_attr);
-  // On "Stop Service" we have to do regular shutdown
-  Service.SetShutdownEvent(hEventShutdown);
-}
-#endif /* _WIN32 */
 
 #ifndef DBUG_OFF
 /*
@@ -4394,12 +3947,7 @@ static void set_super_read_only_post_init()
 {
   opt_super_readonly= super_read_only;
 }
-
-#ifdef _WIN32
-int win_main(int argc, char **argv)
-#else
 int mysqld_main(int argc, char **argv)
-#endif
 {
   /*
     Perform basic thread library and malloc initialization,
@@ -4424,6 +3972,7 @@ int mysqld_main(int argc, char **argv)
   orig_argv= argv;
   my_getopt_use_args_separator= TRUE;
   my_defaults_read_login_file= FALSE;
+  // flyyear 加载默认的配置文件
   if (load_defaults(MYSQL_CONFIG_NAME, load_default_groups, &argc, &argv))
   {
     flush_error_log_messages();
@@ -4447,11 +3996,13 @@ int mysqld_main(int argc, char **argv)
   /*
     Initialize the array of performance schema instrument configurations.
   */
+  // flyyear 根据判断是否开启性能评估配置
   init_pfs_instrument_array();
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 
   ho_error= handle_early_options();
-
+// flyyear
+// 配置检查，比如是直接启动还是daemonize后台启动,然后检查错误日志等配置是不是跟这两种方式吻合
 #if !defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
 
   if (opt_bootstrap && opt_daemonize)
@@ -4485,12 +4036,13 @@ int mysqld_main(int argc, char **argv)
     }
   }
 #endif
-
+// flyyear 接着是一些sql主要变量名及系统变量的初始化
   init_sql_statement_names();
   sys_var_init();
   ulong requested_open_files;
   adjust_related_options(&requested_open_files);
 
+  // flyyear 性能检查的操作
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
   if (ho_error == 0)
   {
@@ -4555,7 +4107,7 @@ int mysqld_main(int argc, char **argv)
     }
   }
 #endif /* HAVE_PSI_INTERFACE */
-
+// flyyear 初始化错误日志和加载权限验证插件
   init_error_log();
 
   /* Initialize audit interface globals. Audit plugins are inited later. */
@@ -4744,9 +4296,6 @@ int mysqld_main(int argc, char **argv)
    The subsequent calls may take a long time : e.g. innodb log read.
    Thus set the long running service control manager timeout
   */
-#if defined(_WIN32)
-  Service.SetSlowStarting(slow_start_timeout);
-#endif
 
   if (init_server_components())
     unireg_abort(MYSQLD_ABORT_EXIT);
@@ -4911,23 +4460,10 @@ int mysqld_main(int argc, char **argv)
 
   if (init_ssl())
     unireg_abort(MYSQLD_ABORT_EXIT);
+  // flyyear 网络初始化
   if (network_init())
     unireg_abort(MYSQLD_ABORT_EXIT);
 
-#ifdef _WIN32
-#ifndef EMBEDDED_LIBRARY
-  if (opt_require_secure_transport &&
-      !opt_enable_shared_memory && !opt_use_ssl &&
-      !opt_initialize && !opt_bootstrap)
-  {
-    sql_print_error("Server is started with --require-secure-transport=ON "
-                    "but no secure transports (SSL or Shared Memory) are "
-                    "configured.");
-    unireg_abort(MYSQLD_ABORT_EXIT);
-  }
-#endif
-
-#endif
 
   /*
    Initialize my_str_malloc(), my_str_realloc() and my_str_free()
@@ -5038,9 +4574,6 @@ int mysqld_main(int argc, char **argv)
                          (const char **) argv, argc))
     unireg_abort(MYSQLD_ABORT_EXIT);
 
-#ifdef _WIN32
-  create_shutdown_thread();
-#endif
   start_handle_manager();
 
   create_compress_gtid_table_thread();
@@ -5055,9 +4588,6 @@ int mysqld_main(int argc, char **argv)
 #endif
                          mysqld_port,
                          MYSQL_COMPILATION_COMMENT);
-#if defined(_WIN32)
-  Service.SetRunning();
-#endif
 
   start_processing_signals();
 
@@ -5108,9 +4638,6 @@ int mysqld_main(int argc, char **argv)
 
   (void) RUN_HOOK(server_state, before_handle_connection, (NULL));
 
-#if defined(_WIN32)
-  setup_conn_event_handler_threads();
-#else
   mysql_mutex_lock(&LOCK_socket_listener_active);
   // Make it possible for the signal handler to kill the listener.
   socket_listener_active= true;
@@ -5119,8 +4646,8 @@ int mysqld_main(int argc, char **argv)
   if (opt_daemonize)
     mysqld::runtime::signal_parent(pipe_write_fd,1);
 
+  // flyyear 这面开始监听连接
   mysqld_socket_acceptor->connection_event_loop();
-#endif /* _WIN32 */
   server_operational_state= SERVER_SHUTTING_DOWN;
 
   DBUG_PRINT("info", ("No longer listening for incoming connections"));
@@ -5161,19 +4688,11 @@ int mysqld_main(int argc, char **argv)
 
   DBUG_PRINT("info", ("Waiting for shutdown proceed"));
   int ret= 0;
-#ifdef _WIN32
-  if (shutdown_thr_handle.handle)
-    ret= my_thread_join(&shutdown_thr_handle, NULL);
-  shutdown_thr_handle.handle= NULL;
-  if (0 != ret)
-    sql_print_warning("Could not join shutdown thread. error:%d", ret);
-#else
   if (signal_thread_id.thread != 0)
     ret= my_thread_join(&signal_thread_id, NULL);
   signal_thread_id.thread= 0;
   if (0 != ret)
     sql_print_warning("Could not join signal_thread. error:%d", ret);
-#endif
 
   clean_up(1);
   mysqld_exit(MYSQLD_SUCCESS_EXIT);
@@ -5185,221 +4704,6 @@ int mysqld_main(int argc, char **argv)
   (all this is needed only to run mysqld as a service on WinNT)
 ****************************************************************************/
 
-#if defined(_WIN32)
-int mysql_service(void *p)
-{
-  if (my_thread_init())
-  {
-    flush_error_log_messages();
-    return 1;
-  }
-
-  if (use_opt_args)
-    win_main(opt_argc, opt_argv);
-  else
-    win_main(Service.my_argc, Service.my_argv);
-
-  my_thread_end();
-  return 0;
-}
-
-
-/* Quote string if it contains space, else copy */
-
-static char *add_quoted_string(char *to, const char *from, char *to_end)
-{
-  uint length= (uint) (to_end-to);
-
-  if (!strchr(from, ' '))
-    return strmake(to, from, length-1);
-  return strxnmov(to, length-1, "\"", from, "\"", NullS);
-}
-
-
-/**
-  Handle basic handling of services, like installation and removal.
-
-  @param argv             Pointer to argument list
-  @param servicename    Internal name of service
-  @param displayname    Display name of service (in taskbar ?)
-  @param file_path    Path to this program
-  @param startup_option Startup option to mysqld
-
-  @retval
-    0   option handled
-  @retval
-    1   Could not handle option
-*/
-
-static bool
-default_service_handling(char **argv,
-       const char *servicename,
-       const char *displayname,
-       const char *file_path,
-       const char *extra_opt,
-       const char *account_name)
-{
-  char path_and_service[FN_REFLEN+FN_REFLEN+32], *pos, *end;
-  const char *opt_delim;
-  end= path_and_service + sizeof(path_and_service)-3;
-
-  /* We have to quote filename if it contains spaces */
-  pos= add_quoted_string(path_and_service, file_path, end);
-  if (extra_opt && *extra_opt)
-  {
-    /*
-     Add option after file_path. There will be zero or one extra option.  It's
-     assumed to be --defaults-file=file but isn't checked.  The variable (not
-     the option name) should be quoted if it contains a string.
-    */
-    *pos++= ' ';
-    if (opt_delim= strchr(extra_opt, '='))
-    {
-      size_t length= ++opt_delim - extra_opt;
-      pos= my_stpnmov(pos, extra_opt, length);
-    }
-    else
-      opt_delim= extra_opt;
-
-    pos= add_quoted_string(pos, opt_delim, end);
-  }
-  /* We must have servicename last */
-  *pos++= ' ';
-  (void) add_quoted_string(pos, servicename, end);
-
-  if (Service.got_service_option(argv, "install"))
-  {
-    Service.Install(1, servicename, displayname, path_and_service,
-                    account_name);
-    return 0;
-  }
-  if (Service.got_service_option(argv, "install-manual"))
-  {
-    Service.Install(0, servicename, displayname, path_and_service,
-                    account_name);
-    return 0;
-  }
-  if (Service.got_service_option(argv, "remove"))
-  {
-    Service.Remove(servicename);
-    return 0;
-  }
-  return 1;
-}
-
-
-int mysqld_main(int argc, char **argv)
-{
-  /*
-    When several instances are running on the same machine, we
-    need to have an  unique  named  hEventShudown  through the
-    application PID e.g.: MySQLShutdown1890; MySQLShutdown2342
-  */
-  int10_to_str((int) GetCurrentProcessId(),my_stpcpy(shutdown_event_name,
-                                                  "MySQLShutdown"), 10);
-
-  /* Must be initialized early for comparison of service name */
-  system_charset_info= &my_charset_utf8_general_ci;
-
-#ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
-  pre_initialize_performance_schema();
-#endif /*WITH_PERFSCHEMA_STORAGE_ENGINE */
-
-  if (my_init())
-  {
-    sql_print_error("my_init() failed.");
-    flush_error_log_messages();
-    return 1;
-  }
-
-  if (Service.GetOS())  /* true NT family */
-  {
-    char file_path[FN_REFLEN];
-    my_path(file_path, argv[0], "");          /* Find name in path */
-    fn_format(file_path,argv[0],file_path,"",
-              MY_REPLACE_DIR | MY_UNPACK_FILENAME | MY_RESOLVE_SYMLINKS);
-
-    if (argc == 2)
-    {
-      if (!default_service_handling(argv, MYSQL_SERVICENAME, MYSQL_SERVICENAME,
-                                    file_path, "", NULL))
-        return 0;
-      if (Service.IsService(argv[1]))        /* Start an optional service */
-      {
-        /*
-          Only add the service name to the groups read from the config file
-          if it's not "MySQL". (The default service name should be 'mysqld'
-          but we started a bad tradition by calling it MySQL from the start
-          and we are now stuck with it.
-        */
-        if (my_strcasecmp(system_charset_info, argv[1],"mysql"))
-          load_default_groups[load_default_groups_sz-2]= argv[1];
-        windows_service= true;
-        Service.Init(argv[1], mysql_service);
-        return 0;
-      }
-    }
-    else if (argc == 3) /* install or remove any optional service */
-    {
-      if (!default_service_handling(argv, argv[2], argv[2], file_path, "",
-                                    NULL))
-        return 0;
-      if (Service.IsService(argv[2]))
-      {
-        /*
-          mysqld was started as
-          mysqld --defaults-file=my_path\my.ini service-name
-        */
-        use_opt_args=1;
-        opt_argc= 2;        // Skip service-name
-        opt_argv=argv;
-        windows_service= true;
-        if (my_strcasecmp(system_charset_info, argv[2],"mysql"))
-          load_default_groups[load_default_groups_sz-2]= argv[2];
-        Service.Init(argv[2], mysql_service);
-        return 0;
-      }
-    }
-    else if (argc == 4 || argc == 5)
-    {
-      /*
-        This may seem strange, because we handle --local-service while
-        preserving 4.1's behavior of allowing any one other argument that is
-        passed to the service on startup. (The assumption is that this is
-        --defaults-file=file, but that was not enforced in 4.1, so we don't
-        enforce it here.)
-      */
-      const char *extra_opt= NullS;
-      const char *account_name = NullS;
-      int index;
-      for (index = 3; index < argc; index++)
-      {
-        if (!strcmp(argv[index], "--local-service"))
-          account_name= "NT AUTHORITY\\LocalService";
-        else
-          extra_opt= argv[index];
-      }
-
-      if (argc == 4 || account_name)
-        if (!default_service_handling(argv, argv[2], argv[2], file_path,
-                                      extra_opt, account_name))
-          return 0;
-    }
-    else if (argc == 1 && Service.IsService(MYSQL_SERVICENAME))
-    {
-      /* start the default service */
-      windows_service= true;
-      Service.Init(MYSQL_SERVICENAME, mysql_service);
-      return 0;
-    }
-  }
-  /* Start as standalone server */
-  Service.my_argc=argc;
-  Service.my_argv=argv;
-  mysql_service(NULL);
-  return 0;
-}
-#endif // _WIN32
 #endif // !EMBEDDED_LIBRARY
 
 
@@ -5946,13 +5250,6 @@ struct my_option my_long_options[]=
   {"skip-stack-trace", OPT_SKIP_STACK_TRACE,
    "Don't print a stack trace on failure.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0,
    0, 0, 0, 0},
-#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
-  {"slow-start-timeout", 0,
-   "Maximum number of milliseconds that the service control manager should wait "
-   "before trying to kill the windows service during startup"
-   "(Default: 15000).", &slow_start_timeout, &slow_start_timeout, 0,
-   GET_ULONG, REQUIRED_ARG, 15000, 0, 0, 0, 0, 0},
-#endif
 #ifdef HAVE_REPLICATION
   {"sporadic-binlog-dump-fail", 0,
    "Option used by mysql-test for debugging and testing of replication.",
@@ -5965,11 +5262,6 @@ struct my_option my_long_options[]=
    "Enable SSL for connection (automatically enabled with other flags).",
    &opt_use_ssl, &opt_use_ssl, 0, GET_BOOL, OPT_ARG, 1, 0, 0,
    0, 0, 0},
-#endif
-#ifdef _WIN32
-  {"standalone", 0,
-  "Dummy option to start as a standalone program (NT).", 0, 0, 0, GET_NO_ARG,
-   NO_ARG, 0, 0, 0, 0, 0, 0},
 #endif
   {"symbolic-links", 's', "Enable symbolic link support.",
    &my_enable_symlinks, &my_enable_symlinks, 0, GET_BOOL, NO_ARG,
@@ -7031,19 +6323,6 @@ static void usage(void)
     puts("\nFor more help options (several pages), use mysqld --verbose --help.");
   else
   {
-#ifdef _WIN32
-  puts("NT and Win32 specific options:\n\
-  --install                     Install the default service (NT).\n\
-  --install-manual              Install the default service started manually (NT).\n\
-  --install service_name        Install an optional service (NT).\n\
-  --install-manual service_name Install an optional service started manually (NT).\n\
-  --remove                      Remove the default service from the service list (NT).\n\
-  --remove service_name         Remove the service_name from the service list (NT).\n\
-  --enable-named-pipe           Only to be used for the default server (NT).\n\
-  --standalone                  Dummy option to start as a standalone server (NT).\
-");
-  puts("");
-#endif
   print_defaults(MYSQL_CONFIG_NAME,load_default_groups);
   puts("");
   set_ports();
@@ -7218,34 +6497,11 @@ static int mysql_init_variables(void)
   ssl_acceptor_fd= 0;
 #endif /* ! EMBEDDED_LIBRARY */
 #endif /* HAVE_OPENSSL */
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  shared_memory_base_name= default_shared_memory_base_name;
-#endif
 
-#if defined(_WIN32)
-  /* Allow Win32 users to move MySQL anywhere */
-  {
-    char prg_dev[LIBLEN];
-    char executing_path_name[LIBLEN];
-    if (!test_if_hard_path(my_progname))
-    {
-      // we don't want to use GetModuleFileName inside of my_path since
-      // my_path is a generic path dereferencing function and here we care
-      // only about the executing binary.
-      GetModuleFileName(NULL, executing_path_name, sizeof(executing_path_name));
-      my_path(prg_dev, executing_path_name, NULL);
-    }
-    else
-      my_path(prg_dev, my_progname, "mysql/bin");
-    strcat(prg_dev,"/../");     // Remove 'bin' to get base dir
-    cleanup_dirname(mysql_home,prg_dev);
-  }
-#else
   const char *tmpenv;
   if (!(tmpenv = getenv("MY_BASEDIR_VERSION")))
     tmpenv = DEFAULT_MYSQL_HOME;
   (void) strmake(mysql_home, tmpenv, sizeof(mysql_home)-1);
-#endif
   return 0;
 }
 
@@ -8365,17 +7621,6 @@ static int fix_paths(void)
     if (!retval)
     {
       convert_dirname(secure_file_real_path, buff, NullS);
-#ifdef WIN32
-      MY_DIR *dir= my_dir(secure_file_real_path, MYF(MY_DONT_SORT+MY_WME));
-      if (!dir)
-      {
-        retval= 1;
-      }
-      else
-      {
-        my_dirend(dir);
-      }
-#endif
     }
 
     if (retval)
@@ -8690,9 +7935,6 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_error_log, "LOCK_error_log", PSI_FLAG_GLOBAL},
   { &key_LOCK_gdl, "LOCK_gdl", PSI_FLAG_GLOBAL},
   { &key_LOCK_global_system_variables, "LOCK_global_system_variables", PSI_FLAG_GLOBAL},
-#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
-  { &key_LOCK_handler_count, "LOCK_handler_count", PSI_FLAG_GLOBAL},
-#endif
   { &key_LOCK_manager, "LOCK_manager", PSI_FLAG_GLOBAL},
   { &key_LOCK_prepared_stmt_count, "LOCK_prepared_stmt_count", PSI_FLAG_GLOBAL},
   { &key_LOCK_sql_slave_skip_counter, "LOCK_sql_slave_skip_counter", PSI_FLAG_GLOBAL},
@@ -8823,9 +8065,6 @@ static PSI_cond_info all_server_conds[]=
   { &key_RELAYLOG_update_cond, "MYSQL_RELAY_LOG::update_cond", 0},
   { &key_RELAYLOG_prep_xids_cond, "MYSQL_RELAY_LOG::prep_xids_cond", 0},
   { &key_COND_cache_status_changed, "Query_cache::COND_cache_status_changed", 0},
-#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
-  { &key_COND_handler_count, "COND_handler_count", PSI_FLAG_GLOBAL},
-#endif
   { &key_COND_manager, "COND_manager", PSI_FLAG_GLOBAL},
   { &key_COND_server_started, "COND_server_started", PSI_FLAG_GLOBAL},
 #if !defined(EMBEDDED_LIBRARY) && !defined(_WIN32)
@@ -8864,12 +8103,6 @@ PSI_thread_key key_thread_timer_notifier;
 
 static PSI_thread_info all_server_threads[]=
 {
-#if defined (_WIN32) && !defined (EMBEDDED_LIBRARY)
-  { &key_thread_handle_con_namedpipes, "con_named_pipes", PSI_FLAG_GLOBAL},
-  { &key_thread_handle_con_sharedmem, "con_shared_mem", PSI_FLAG_GLOBAL},
-  { &key_thread_handle_con_sockets, "con_sockets", PSI_FLAG_GLOBAL},
-  { &key_thread_handle_shutdown, "shutdown", PSI_FLAG_GLOBAL},
-#endif /* _WIN32 && !EMBEDDED_LIBRARY */
   { &key_thread_timer_notifier, "thread_timer_notifier", PSI_FLAG_GLOBAL},
   { &key_thread_bootstrap, "bootstrap", PSI_FLAG_GLOBAL},
   { &key_thread_handle_manager, "manager", PSI_FLAG_GLOBAL},

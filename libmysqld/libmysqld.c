@@ -60,14 +60,6 @@ struct passwd *getpwuid(uid_t);
 char* getlogin(void);
 #endif
 
-#ifdef _WIN32
-static my_bool is_NT(void)
-{
-  char *os=getenv("OS");
-  return (os && !strcmp(os, "Windows_NT")) ? 1 : 0;
-}
-#endif
-
 
 int mysql_init_character_set(MYSQL *mysql);
 // feinian  这面进行mysql客户端初始化的工作

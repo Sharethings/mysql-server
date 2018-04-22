@@ -582,6 +582,7 @@ static int check_connection(THD *thd)
       my_error(ER_BAD_HOST_ERROR, MYF(0));
       return 1;
     }
+    // flyyear 客户端所连接的IP进行处理
     thd->m_main_security_ctx.assign_ip(ip, strlen(ip));
     main_sctx_ip= thd->m_main_security_ctx.ip();
     if (!(main_sctx_ip.length))
@@ -681,6 +682,7 @@ static int check_connection(THD *thd)
     return 1;
   }
 
+  // flyyear 下面开始认证
   auth_rc= acl_authenticate(thd, COM_CONNECT);
 
   if (mysql_audit_notify(thd, AUDIT_EVENT(MYSQL_AUDIT_CONNECTION_CONNECT)))
@@ -729,6 +731,7 @@ static bool login_connection(THD *thd)
   thd->get_protocol_classic()->set_read_timeout(connect_timeout);
   thd->get_protocol_classic()->set_write_timeout(connect_timeout);
 
+  // flyyear 调用开始连接检查
   error= check_connection(thd);
   thd->send_statement_status();
 
@@ -868,10 +871,12 @@ static void prepare_new_connection_state(THD* thd)
 }
 
 
+// flyyear 这面开始认证
 bool thd_prepare_connection(THD *thd)
 {
   bool rc;
   lex_start(thd);
+  // flyyear 进行认证
   rc= login_connection(thd);
 
   if (rc)

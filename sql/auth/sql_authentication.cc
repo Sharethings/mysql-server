@@ -1364,6 +1364,7 @@ char *get_41_lenc_string(char **buffer,
 
 
 /* the packet format is described in send_client_reply_packet() */
+// flyyear 这面拿到客户端发送过来的握手包
 static size_t parse_client_handshake_packet(MPVIO_EXT *mpvio,
                                             uchar **buff, size_t pkt_len)
 {
@@ -1388,7 +1389,9 @@ static size_t parse_client_handshake_packet(MPVIO_EXT *mpvio,
   */
   if (bytes_remaining_in_packet < 2)
     return packet_error;
-    
+   // flyyear 这面先读取前两个字节的客户端的权能标志
+   // 因为CLIENT_PROTOCOL_41在低16位的权能标志里面
+   // 下面根据CLIENT_PROTOCOL_41是否是1，根据协议的格式，再次对客户端发送过来的包进行处理
   protocol->set_client_capabilities(uint2korr(end));
 
   /*
@@ -1413,7 +1416,7 @@ static size_t parse_client_handshake_packet(MPVIO_EXT *mpvio,
   
   if (!packet_has_required_size)
     return packet_error;
-  
+ // flyyear 这面根据CLIENT_PROTOCOL_41再次读取客户端发送过来的权能标志 
   if (protocol->has_client_capability(CLIENT_PROTOCOL_41))
   {
     protocol->set_client_capabilities(uint4korr(end));
@@ -1886,6 +1889,7 @@ static int server_mpvio_read_packet(MYSQL_PLUGIN_VIO *param, uchar **buf)
   */
   if (mpvio->packets_read == 1)
   {
+      // flyyear 这面对包进行parse
     pkt_len= parse_client_handshake_packet(mpvio, buf, pkt_len);
     if (pkt_len == packet_error)
       goto err;
@@ -1916,6 +1920,7 @@ static void server_mpvio_info(MYSQL_PLUGIN_VIO *vio,
 
 } // extern "C"
 
+// flyyear 继续认证
 static int do_auth_once(THD *thd, const LEX_CSTRING &auth_plugin_name,
                         MPVIO_EXT *mpvio)
 {
@@ -1924,6 +1929,7 @@ static int do_auth_once(THD *thd, const LEX_CSTRING &auth_plugin_name,
   bool unlock_plugin= false;
   plugin_ref plugin= NULL;
 
+  // flyyear 对auth_plugin进行判断，这面走默认的mysql_native_plugin进行
   if (auth_plugin_name.str == native_password_plugin_name.str)
     plugin= native_password_plugin;
 #ifndef EMBEDDED_LIBRARY
@@ -1942,6 +1948,7 @@ static int do_auth_once(THD *thd, const LEX_CSTRING &auth_plugin_name,
   if (plugin)
   {
     st_mysql_auth *auth= (st_mysql_auth *) plugin_decl(plugin)->info;
+    // flyyear 开始验证用户 这面会调用native_password_authenticate对应的函数的认证逻辑
     res= auth->authenticate_user(mpvio, &mpvio->auth_info);
 
     if (unlock_plugin)
@@ -1979,6 +1986,7 @@ server_mpvio_initialize(THD *thd, MPVIO_EXT *mpvio,
   LEX_CSTRING sctx_host_or_ip= thd->security_context()->host_or_ip();
 
   memset(mpvio, 0, sizeof(MPVIO_EXT));
+  // flyyear read_packet、write_packet和info均为函数指针
   mpvio->read_packet= server_mpvio_read_packet;
   mpvio->write_packet= server_mpvio_write_packet;
   mpvio->info= server_mpvio_info;
@@ -2157,9 +2165,12 @@ assign_priv_user_host(Security_context *sctx, ACL_USER *user)
   @retval 0  success, thd is updated.
   @retval 1  error
 */
+// flyyear 下面进行用户验证
 int
 acl_authenticate(THD *thd, enum_server_command command)
 {
+  // flyyear 新建mpvio，并进行初始化用于保存验证过程的上下文; 字符集,
+  // 挑战随机数、上锁等, 根据command进行分派, 新建链接为COM_CONNECT
   int res= CR_OK;
   MPVIO_EXT mpvio;
   LEX_CSTRING auth_plugin_name= default_auth_plugin_name;
@@ -2204,9 +2215,10 @@ acl_authenticate(THD *thd, enum_server_command command)
     DBUG_ASSERT(mpvio.status == MPVIO_EXT::RESTART ||
                 mpvio.status == MPVIO_EXT::SUCCESS);
   }
-  else
+  else // flyyear command不是COM_CHANGE_USER就是COM_CONNECT
   {
     /* mark the thd as having no scramble yet */
+      // flyyear  表示没有挑战随机数
     mpvio.scramble[SCRAMBLE_LENGTH]= 1;
     
     /*
@@ -2215,7 +2227,7 @@ acl_authenticate(THD *thd, enum_server_command command)
      with a user name, and performs the authentication if everyone has used
      the correct plugin.
     */
-
+    // flyyear 调用继续认证
     res= do_auth_once(thd, auth_plugin_name, &mpvio);
   }
 
@@ -2700,6 +2712,7 @@ int set_sha256_salt(const char* password MY_ATTRIBUTE((unused)),
   2. client sends the encrypted password back to the server
   3. the server checks the password.
 */
+// flyyear 这面是默认插件mysql_native_password的认证方式
 static int native_password_authenticate(MYSQL_PLUGIN_VIO *vio,
                                         MYSQL_SERVER_AUTH_INFO *info)
 {
@@ -2710,10 +2723,12 @@ static int native_password_authenticate(MYSQL_PLUGIN_VIO *vio,
   DBUG_ENTER("native_password_authenticate");
 
   /* generate the scramble, or reuse the old one */
+  // flyyear 生成20字节的scramble
   if (mpvio->scramble[SCRAMBLE_LENGTH])
     generate_user_salt(mpvio->scramble, SCRAMBLE_LENGTH + 1);
 
   /* send it to the client */
+  // flyyear 将scramble信息发送给客户端
   if (mpvio->write_packet(mpvio, (uchar*) mpvio->scramble, SCRAMBLE_LENGTH + 1))
     DBUG_RETURN(CR_AUTH_HANDSHAKE);
 
@@ -2755,6 +2770,7 @@ static int native_password_authenticate(MYSQL_PLUGIN_VIO *vio,
   */
 
   /* read the reply with the encrypted password */
+  // flyyear 读取客户端发送过来的token
   if ((pkt_len= mpvio->read_packet(mpvio, &pkt)) < 0)
     DBUG_RETURN(CR_AUTH_HANDSHAKE);
   DBUG_PRINT("info", ("reply read : pkt_len=%d", pkt_len));
@@ -2784,6 +2800,7 @@ static int native_password_authenticate(MYSQL_PLUGIN_VIO *vio,
     if (!mpvio->acl_user->salt_len)
       DBUG_RETURN(CR_AUTH_USER_CREDENTIALS);
 
+    // flyyear 下面对拿到的token进行验证
     DBUG_RETURN(check_scramble(pkt, mpvio->scramble, mpvio->acl_user->salt) ?
                 CR_AUTH_USER_CREDENTIALS : CR_OK);
   }

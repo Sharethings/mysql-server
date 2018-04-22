@@ -70,6 +70,7 @@ typedef std::map<MYSQL_SOCKET, bool, Socket_lt_type>::iterator
   via mysqld command-line  and a unix socket which is bind to a mysqld
   defaul pathname.
 */
+  // flyyear mysql TCP/IP unix socket连接方式的类
 class Mysqld_socket_listener
 {
   std::string m_bind_addr_str; // IP address string

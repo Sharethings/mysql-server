@@ -86,7 +86,7 @@ bool Connection_handler_manager::valid_connection_count()
   return connection_accepted;
 }
 
-
+// flyyear 这面进行连接数的判断,如果连接数过多会错误连接数+1
 bool Connection_handler_manager::check_and_incr_conn_count()
 {
   bool connection_accepted= true;
@@ -255,16 +255,20 @@ bool Connection_handler_manager::unload_connection_handler()
 }
 
 
+// flyyear 新的连接走到这里
 void
 Connection_handler_manager::process_new_connection(Channel_info* channel_info)
 {
+    // flyyear 这面检查abort_loop是否强制停止 和连接数量
+    // 这面的连接是由每次关闭连接并不一定回收
+    // 这个缓存连接的数量是由thread_cache_size变量来设置的
   if (abort_loop || !check_and_incr_conn_count())
   {
     channel_info->send_error_and_close_channel(ER_CON_COUNT_ERROR, 0, true);
     delete channel_info;
     return;
   }
-
+  // flyyear 添加一个新的连接
   if (m_connection_handler->add_connection(channel_info))
   {
     inc_aborted_connects();

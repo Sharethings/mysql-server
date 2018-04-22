@@ -68,6 +68,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
 struct st_mysql_socket
 {
   /** The real socket descriptor. */
+  // flyyear typedef SOCKET my_socket
+  // #define SOCKET int
+  // 这面的my_socket就是一个int类型的,用来表示文件描述符
   my_socket fd;
 
   /**
@@ -82,6 +85,7 @@ struct st_mysql_socket
   An instrumented socket.
   @c MYSQL_SOCKET is a replacement for @c my_socket.
 */
+// flyyear MYSQL_SOCKET在这面定义的
 typedef struct st_mysql_socket MYSQL_SOCKET;
 
 
