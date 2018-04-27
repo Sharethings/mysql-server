@@ -7397,6 +7397,7 @@ Stores a row in an InnoDB database, to the table specified in this
 handle.
 @return error code */
 
+// flyyear 这面开始记录的插入了
 int
 ha_innobase::write_row(
 /*===================*/
@@ -7559,6 +7560,7 @@ no_commit:
 	innobase_srv_conc_enter_innodb(m_prebuilt);
 
 	/* Step-5: Execute insert graph that will result in actual insert. */
+    // flyyear 这面开始将格式转换成innodb的格式
 	error = row_insert_for_mysql((byte*) record, m_prebuilt);
 
 	DEBUG_SYNC(m_user_thd, "ib_after_row_insert");

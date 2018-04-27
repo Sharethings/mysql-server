@@ -2341,6 +2341,7 @@ int ha_prepare_low(THD *thd, bool all)
       */
       if (!ha_info->is_trx_read_write())
         continue;
+      // flyyear 调用存储引擎层（这里查看innodb）的prepare在存储层生成XA事务
       if ((err= ht->prepare(ht, thd, all)))
       {
         my_error(ER_ERROR_DURING_COMMIT, MYF(0), err);
@@ -7972,6 +7973,7 @@ int handler::ha_reset()
 int handler::ha_write_row(uchar *buf)
 {
   int error;
+  // flyyear 指定log_event的类型
   Log_func *log_func= Write_rows_log_event::binlog_row_logging_function;
   DBUG_ASSERT(table_share->tmp_table != NO_TMP_TABLE ||
               m_lock_type == F_WRLCK);
@@ -7989,6 +7991,9 @@ int handler::ha_write_row(uchar *buf)
                   set_my_errno(HA_ERR_CRASHED);
                   DBUG_RETURN(HA_ERR_CRASHED););
 
+  // flyyear 这面调用引擎层开始写入
+  // write_row调用不同的存储引擎，这面使用innodb
+  // 函数实现所在的路径为 storage/innobase/handler/ha_innodb.cc
   MYSQL_TABLE_IO_WAIT(PSI_TABLE_WRITE_ROW, MAX_KEY, error,
     { error= write_row(buf); })
 

@@ -39,6 +39,8 @@
     0	Ok
     1	Error 
 */
+
+// flyyear 修改文件的大小，删除后面没有的文件内容
 int my_chsize(File fd, my_off_t newlength, int filler, myf MyFlags)
 {
   my_off_t oldsize;

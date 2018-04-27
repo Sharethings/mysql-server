@@ -1125,6 +1125,9 @@ Returns TRUE if less than 25 % of the buffer pool in any instance is
 available. This can be used in heuristics to prevent huge transactions
 eating up the whole buffer pool for their locks.
 @return TRUE if less than 25 % of buffer pool left */
+// flyyear 如果任何实例的buffer
+// pool小于25%的话，将会返回TRUE（返回TRUE的函数在mysql源码里面都是代表有问题）
+// 这样可以防止大的事务将所有的buffer pool用完，用于他们的锁
 ibool
 buf_LRU_buf_pool_running_out(void)
 /*==============================*/

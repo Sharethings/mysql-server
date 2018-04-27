@@ -22,6 +22,8 @@
   MySQL standard memory allocator class. You have to inherit the class
   in order to use it.
 */
+// flyyear mysql 标准的内存分配类，想要分配内存都必须进程这个类
+// 这个类啥成员变量都没有，纯粹是重载了new和delete操作
 class Sql_alloc
 {
 public:

@@ -996,6 +996,7 @@ bool do_command(THD *thd)
   if (classic)
     my_net_set_read_timeout(net, thd->variables.net_read_timeout);
 
+  // flyyear 这面分发命令
   return_value= dispatch_command(thd, &com_data, command);
   thd->get_protocol_classic()->get_packet()->shrink(
       thd->variables.net_buffer_length);
@@ -1183,6 +1184,8 @@ void reset_statement_timer(THD *thd)
     1   request of thread shutdown, i. e. if command is
         COM_QUIT/COM_SHUTDOWN
 */
+// flyyear 这面开始分发命令和uddb类似
+// 这面以一个insert 语句来把流程串起来
 bool dispatch_command(THD *thd, const COM_DATA *com_data,
                       enum enum_server_command command)
 {
@@ -1425,6 +1428,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     mysqld_stmt_reset(thd, com_data->com_stmt_reset.stmt_id);
     break;
   }
+  // flyyear insert的语句类型走到COM_QUERY这面
   case COM_QUERY:
   {
     DBUG_ASSERT(thd->m_digest == NULL);
@@ -1455,6 +1459,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     if (parser_state.init(thd, thd->query().str, thd->query().length))
       break;
 
+    // flyyear  这面开始进行parse
     mysql_parse(thd, &parser_state);
 
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
@@ -2413,6 +2418,7 @@ static inline void binlog_gtid_end_transaction(THD *thd)
     TRUE        Error
 */
 
+// flyyear 这面开始执行语句
 int
 mysql_execute_command(THD *thd, bool first_level)
 {
@@ -2734,6 +2740,7 @@ mysql_execute_command(THD *thd, bool first_level)
     thd->query_plan.set_query_plan(lex->sql_command, lex,
                                    !thd->stmt_arena->is_conventional());
 
+  // flyyear sql结果解析过后的详细的类型
   switch (lex->sql_command) {
 
   case SQLCOM_SHOW_STATUS:
@@ -3563,6 +3570,10 @@ end_with_restore_list:
   {
     DBUG_ASSERT(first_table == all_tables && first_table != 0);
     DBUG_ASSERT(lex->m_sql_cmd != NULL);
+    DBUG_PRINT("flyyear", ("in sqlparse.cc SQLCOM_INSERT_SELECT"));
+    // flyyear 这面开始执行insert的语句
+    // 这面也是通过虚基类实现的多态
+    // insert 语句是调用sql_insert.cc里面的execute函数
     res= lex->m_sql_cmd->execute(thd);
     break;
   }
@@ -5457,6 +5468,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
 
   enable_digest_if_any_plugin_needs_it(thd, parser_state);
 
+  // flyyear 检查query_cache，如果结果存在于cache中，直接返回
   if (query_cache.send_result_to_client(thd, thd->query()) <= 0)
   {
     LEX *lex= thd->lex;
@@ -5466,13 +5478,14 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
 
     if (!err)
     {
+        //flyyear 这面解析语句
       err= parse_sql(thd, parser_state, NULL);
       if (!err)
         err= invoke_post_parse_rewrite_plugins(thd, false);
 
       found_semicolon= parser_state->m_lip.found_semicolon;
     }
-
+    // flyyear 下面开始整理语句格式，记录general log
     if (!err)
     {
       /*
@@ -5579,6 +5592,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             error= 1;
           }
           else
+              // flyyear 这面开始执行语句
             error= mysql_execute_command(thd, true);
 
           MYSQL_QUERY_EXEC_DONE(error);

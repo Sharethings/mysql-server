@@ -417,7 +417,7 @@ bool mysql_prepare_blob_values(THD *thd, List<Item> &fields, MEM_ROOT *mem_root)
   relies on the caller to close the thread tables. This is done in the
   end of dispatch_command().
 */
-
+// flyyear 插入语句的实现
 bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
 {
   DBUG_ENTER("mysql_insert");
@@ -474,6 +474,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   List_item *values= its++;
   const uint value_count= values->elements;
   TABLE      *insert_table= NULL;
+  // flyyear 为插入语句准备项目
   if (mysql_prepare_insert(thd, table_list, values, false))
     goto exit_without_my_ok;
 
@@ -613,6 +614,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   }
 
   // Lock the tables now if not locked already.
+  // flyyear 加锁
   if (!is_locked &&
       lock_tables(thd, table_list, lex->table_count, 0))
     DBUG_RETURN(true);
@@ -766,6 +768,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
       error= 1;
       break;
     }
+    // flyyear 写入记录
     error= write_record(thd, insert_table, &info, &update);
     if (error)
       break;
@@ -781,6 +784,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
     Now all rows are inserted.  Time to update logs and sends response to
     user
   */
+  // flyyear 所有的行都已经OK 现在开始更新日志和给用户发送应答
   {
     /* TODO: Only call this if insert_table->found_next_number_field.*/
     insert_table->file->ha_release_auto_increment();
@@ -1197,6 +1201,7 @@ static void prepare_for_positional_update(TABLE *table, TABLE_LIST *tables)
   @return false if success, true if error
 */
 
+// flyyear 为插入语句准备项目
 bool Sql_cmd_insert_base::mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
                                                List_item *values,
                                                bool select_insert)
@@ -1525,6 +1530,7 @@ int write_record(THD *thd, TABLE *table, COPY_INFO *info, COPY_INFO *update)
 
   const enum_duplicates duplicate_handling= info->get_duplicate_handling();
 
+  // flyyear  处理 INSERT ON DUPLICATE KEY UPDATE 等复杂情况
   if (duplicate_handling == DUP_REPLACE || duplicate_handling == DUP_UPDATE)
   {
     DBUG_ASSERT(duplicate_handling != DUP_UPDATE || update != NULL);
@@ -1870,8 +1876,10 @@ int write_record(THD *thd, TABLE *table, COPY_INFO *info, COPY_INFO *update)
         table->write_set != save_write_set)
       table->column_bitmaps_set(save_read_set, save_write_set);
   }
+  // flyyear 调用存储引擎的接口
   else if ((error=table->file->ha_write_row(table->record[0])))
   {
+    DBUG_PRINT("flyyear", ("in table->file->ha_write_row"));
     DEBUG_SYNC(thd, "write_row_noreplace");
     info->last_errno= error;
     myf error_flags= MYF(0);
@@ -2373,6 +2381,9 @@ bool Query_result_insert::send_eof()
     events are in the transaction cache and will be written when
     ha_autocommit_or_rollback() is issued below.
   */
+  // flyyear 这面在事务提交之前写入到binlog.
+  // 在row-based replication模式下没有语句通过binlog_query函数写入
+  // 所有的在事务缓存里面的事件都会被写入当ha_autocommit_or_rollback函数被调用
   if (mysql_bin_log.is_open() &&
       (!error || thd->get_transaction()->cannot_safely_rollback(
         Transaction_ctx::STMT)))
@@ -3080,6 +3091,7 @@ void Query_result_create::abort_result_set()
 
 bool Sql_cmd_insert::execute(THD *thd)
 {
+  DBUG_PRINT("flyyear", ("in Sql_comd_insert::execute"));
   DBUG_ASSERT(thd->lex->sql_command == SQLCOM_REPLACE ||
               thd->lex->sql_command == SQLCOM_INSERT);
 
@@ -3092,6 +3104,7 @@ bool Sql_cmd_insert::execute(THD *thd)
   if (open_temporary_tables(thd, all_tables))
     return true;
 
+  // flyyear 这面进行权限的检查
   if (insert_precheck(thd, all_tables))
     return true;
 
@@ -3104,6 +3117,7 @@ bool Sql_cmd_insert::execute(THD *thd)
     thd->push_internal_handler(&strict_handler);
 
   MYSQL_INSERT_START(const_cast<char*>(thd->query().str));
+  // flyyear 开始insert
   res= mysql_insert(thd, all_tables);
   MYSQL_INSERT_DONE(res, (ulong) thd->get_row_count_func());
 

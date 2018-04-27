@@ -36,6 +36,11 @@ typedef ulonglong my_xid;
   an in-memory structure, one dummy that does not do anything, and one
   using the binary log for transaction coordination.
 */
+// flyyear 事务协调日志
+// 一个虚基类拥有三种不同的关于事务协调的实现
+// 服务端通过事务协调者保证事务正确的执行，有三种实现方式：
+// 一种使用内存的结构体 二者是虚拟的不做任何事情（？？啥意思）
+// 第三种是使用二进制日志
 class TC_LOG
 {
 public:
@@ -68,12 +73,16 @@ public:
     @retval 0  sucess
     @retval 1  failed
   */
+  // flyyear 初始化和打开协调日志
+  // 如果是在服务端重启阶段，做恢复操作如果有需要的话
   virtual int open(const char *opt_name)=0;
 
   /**
     Close the transaction coordinator log and free any resources.
     Called during server shutdown.
   */
+  // flyyear 关闭事务协调日志并释放所有的资源
+  // 在服务关闭时调用
   virtual void close()=0;
 
   /**
@@ -89,6 +98,8 @@ public:
 
      @return Error code on failure, zero on success.
    */
+  // flyyear 写入事务的commit日志到事务协调者日志
+  // 函数返回时，事务commit正确的写入到事务协调日记里，并且在存储引擎端亦可commit
   virtual enum_result commit(THD *thd, bool all) = 0;
 
   /**
@@ -105,6 +116,8 @@ public:
 
      @return Error code on failure, zero on success.
    */
+  // flyyear 写入事务的rollback记录到事务协调者日志里面
+  // 这个函数返回，这个事务已经终止在事务协调者日志里面
   virtual int rollback(THD *thd, bool all) = 0;
 
   /**
@@ -117,6 +130,7 @@ public:
 
      @return Error code on failure, zero on success.
    */
+  // flyyear 写入事务的prepare记录到存储引擎
   virtual int prepare(THD *thd, bool all) = 0;
 };
 

@@ -77,12 +77,18 @@ struct xarecover_st
 static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
                                     void *arg)
 {
+  // flyyear 初始化时，更新过total_ha_2pc并且存在revocer函数的引擎
+  // 以innodb说明
   handlerton *hton= plugin_data<handlerton*>(plugin);
   struct xarecover_st *info= (struct xarecover_st *) arg;
   int got;
 
+  // flyyear 调用引擎插件的recover函数
+  // innodb会解析redo log，读取出所有处于prepare状态的事务，返回事务的xid
   if (hton->state == SHOW_OPTION_YES && hton->recover)
   {
+      // flyyear 遍历引擎插件返回的xid数组
+      // innodb的redolog中处于prepare状态的事务xid
     while ((got= hton->recover(hton, info->list, info->len)) > 0)
     {
       sql_print_information("Found %d prepared transaction(s) in %s",
@@ -107,6 +113,8 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
           continue;
         }
         // recovery mode
+        // 在最后一个binlog中读取的xid的hash桶（传入参数）查找xid
+        // 如果找到了，说明该事务记录了binlog，则commit，找不到则rollback
         if (info->commit_list ?
             my_hash_search(info->commit_list, (uchar *)&x, sizeof(x)) != 0 :
             tc_heuristic_recover == TC_HEURISTIC_RECOVER_COMMIT)
@@ -192,6 +200,7 @@ int ha_recover(HASH *commit_list)
     DBUG_RETURN(1);
   }
 
+  // flyyear 每个引擎依次执行xarecover_handlerton
   plugin_foreach(NULL, xarecover_handlerton,
                  MYSQL_STORAGE_ENGINE_PLUGIN, &info);
 

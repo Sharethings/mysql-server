@@ -677,6 +677,10 @@ enum ha_notification_type { HA_NOTIFY_PRE_EVENT, HA_NOTIFY_POST_EVENT };
 
 extern st_plugin_int *hton2plugin[MAX_HA];
 
+// flyyear Mysql与存储引擎之间的接口主要是由此文件里面的class handler和struct handlerton
+// 上面两个的主要区别是：struct handlerton定义了事务操作接口；
+// class handler 定义了表、索引以及记录操作接口
+//
 class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
@@ -689,6 +693,11 @@ class handler;
 
   savepoint_*, prepare, recover, and *_by_xid pointers can be 0.
 */
+
+// flyyear handlerton
+// 是一个单例的结构体，每一个存储引擎只有一个该结构，提供了会影响整个存储引擎的接口，
+// 负责存储引擎的初始化，事务相关的操作等
+// 如commit（）、show_status（）等，大约30多种
 struct handlerton
 {
   /*
@@ -2121,20 +2130,29 @@ public:
   must be set to 0.
 */
 
+// flyyear handler 类是所有的存储引擎的基类
+// 这个类定义了对表操作的常见接口
+// Sql_alloc类用户分配内存
+// 所以handler类分配内存是可以从连接相关的内存池来分配的，而删除时不需要做任何事情
+// 内存的释放只会在mysys/my_alloc.c中的free_root（）调用发生，无需显性去释放，在语句执行之后清理
+// 
+// flyyear
+// 对表接口的抽象类，提供了针对单个表的操作，如open()、write_row（）等，大约150种方法。
+// 每一个table描述符对应一个handler实例，如果同一个table被打开多次，那么这时候会出现多个handler实例
 class handler :public Sql_alloc
 {
   friend class Partition_handler;
 public:
   typedef ulonglong Table_flags;
 protected:
-  TABLE_SHARE *table_share;             /* The table definition */
-  TABLE *table;                         /* The current open table */
-  Table_flags cached_table_flags;       /* Set on init() and open() */
+  TABLE_SHARE *table_share;             /* The table definition */  // flyyear 表的定义
+  TABLE *table;                         /* The current open table */    // flyyear 当前打开的表
+  Table_flags cached_table_flags;       /* Set on init() and open() */  // flyyear 在调用init（）函数和open（）函数是设置
 
   ha_rows estimation_rows_to_insert;
 public:
-  handlerton *ht;                 /* storage engine of this handler */
-  uchar *ref;				/* Pointer to current row */
+  handlerton *ht;                 /* storage engine of this handler */ // flyyear 该handler的存储引擎
+  uchar *ref;				/* Pointer to current row */    // flyyear 当前行的指针
   uchar *dup_ref;			/* Pointer to duplicate row */
 
   ha_statistics stats;
@@ -2228,7 +2246,7 @@ public:
      the more intervals we have reserved, the bigger the next one. Reset in
      handler::ha_release_auto_increment().
   */
-  uint auto_inc_intervals_count;
+  uint auto_inc_intervals_count;    // flyyear 自增值对应的内部变量
 
   /**
     Instrumented table associated with this handler.

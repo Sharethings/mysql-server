@@ -629,6 +629,8 @@ row_mysql_store_col_in_innobase_format(
 Convert a row in the MySQL format to a row in the Innobase format. Note that
 the function to convert a MySQL format key value to an InnoDB dtuple is
 row_sel_convert_mysql_key_to_innobase() in row0sel.cc. */
+
+// flyyear 下面是将一行的格式从mysql转换成Innobase
 static
 void
 row_mysql_convert_row_to_innobase(
@@ -1650,6 +1652,8 @@ INSERT graph.
 @param[in]	mysql_rec	row in the MySQL format
 @param[in,out]	prebuilt	prebuilt struct in MySQL handle
 @return error code or DB_SUCCESS */
+// flyyear 插入调用函数
+// 使用insert图插入mysql。这个函数执行insert图
 static
 dberr_t
 row_insert_for_mysql_using_ins_graph(
@@ -1715,6 +1719,7 @@ row_insert_for_mysql_using_ins_graph(
 	row_get_prebuilt_insert_row(prebuilt);
 	node = prebuilt->ins_node;
 
+    // 记录格式从mysql转换成innobase
 	row_mysql_convert_row_to_innobase(node->row, prebuilt, mysql_rec,
 					  &blob_heap);
 
@@ -1735,6 +1740,8 @@ run_again:
 	thr->run_node = node;
 	thr->prev_node = node;
 
+    // flyyear 插入记录
+    DBUG_PRINT("flyyear", ("before row_ins_step"));
 	row_ins_step(thr);
 
 	DEBUG_SYNC_C("ib_after_row_insert_step");
@@ -1855,9 +1862,15 @@ row_insert_for_mysql(
 	/* For intrinsic tables there a lot of restrictions that can be
 	relaxed including locking of table, transaction handling, etc.
 	Use direct cursor interface for inserting to intrinsic tables. */
+    // flyyear 对于内在的表许多限制可以放宽，比如锁定表、事务处理
+    // intrinsic table 是innodb 不支持MVCC、ACID的表格式
+    // 使用直接光标接口插入内在表
+    // 内部表是在5.7.6版本加入的，主要被优化器使用，在之前版本中, 小的临时表用HEAP/MEMORY引擎，对于大的临时表使用的是MyISAM引擎来作为查询过程中产生的临时表引擎；在5.7版本中，InnoDB对临时表(intrinsic table)做了大量优化，包括独立的临时表表空间，独立的undo回滚端，减少redo
+    // log的记录。
 	if (dict_table_is_intrinsic(prebuilt->table)) {
 		return(row_insert_for_mysql_using_cursor(mysql_rec, prebuilt));
 	} else {
+        DBUG_PRINT("flyyear", ("use row_insert_for_mysql_using_ins_graph"));
 		return(row_insert_for_mysql_using_ins_graph(
 			mysql_rec, prebuilt));
 	}

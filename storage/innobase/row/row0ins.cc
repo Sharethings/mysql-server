@@ -2519,6 +2519,7 @@ row_ins_clust_index_entry_low(
 	    && n_uniq
 	    && (cursor->up_match >= n_uniq || cursor->low_match >= n_uniq)) {
 
+        // flyyear  根据不同的flag检查主键冲突
 		if (flags
 		    == (BTR_CREATE_FLAG | BTR_NO_LOCKING_FLAG
 			| BTR_NO_UNDO_LOG_FLAG | BTR_KEEP_SYS_FLAG)) {
@@ -2558,9 +2559,15 @@ err_exit:
 		goto func_exit;
 	}
 
+    // flyyear 下面解释不知道啥意思，来自网上
+    //  如果要插入的索引项已存在，则把insert操作改为update操作
+    //  索引项已存在，且没有主键冲突，是因为之前的索引项对应的数据被标记为已删除
+    //  本次插入的数据和上次删除的一样，而索引项并未删除，所以变为update操作
+
 	/* Note: Allowing duplicates would qualify for modification of
 	an existing record as the new entry is exactly same as old entry.
 	Avoid this check if allow duplicates is enabled. */
+
 	if (!index->allow_duplicates && row_ins_must_modify_rec(cursor)) {
 		/* There is already an index entry with a long enough common
 		prefix, we must convert the insert into a modify of an
@@ -2575,15 +2582,18 @@ err_exit:
 			index->last_sel_cur->invalid = true;
 		}
 
+        // flyyear 更新数据到存在的索引项
 		err = row_ins_clust_index_entry_by_modify(
 			&pcur, flags, mode, &offsets, &offsets_heap,
 			entry_heap, entry, thr, &mtr);
 
+        // flyyear 如果索引正在online_ddl，先记录insert
 		if (err == DB_SUCCESS && dict_index_is_online_ddl(index)) {
 			row_log_table_insert(btr_cur_get_rec(cursor), entry,
 					     index, offsets);
 		}
 
+        // flyyear 提交mini transaction
 		mtr_commit(&mtr);
 		mem_heap_free(entry_heap);
 	} else {
@@ -2592,11 +2602,13 @@ err_exit:
 		if (mode != BTR_MODIFY_TREE) {
 			ut_ad((mode & ~BTR_ALREADY_S_LATCHED)
 			      == BTR_MODIFY_LEAF);
+            // flyyear 先进行一次乐观插入
 			err = btr_cur_optimistic_insert(
 				flags, cursor, &offsets, &offsets_heap,
 				entry, &insert_rec, &big_rec,
 				n_ext, thr, &mtr);
 		} else {
+            // flyyear 如果buffer pool余量不足25%，插入失败，返回DB_LOCK_TABLE_FULL 处理DB_LOCK_TABLE_FULL错误时，会回滚事务, 这样可以防止大事务的锁占满buffer pool(注释里写的)
 			if (buf_LRU_buf_pool_running_out()) {
 
 				err = DB_LOCK_TABLE_FULL;
@@ -2605,6 +2617,7 @@ err_exit:
 
 			DEBUG_SYNC_C("before_insert_pessimitic_row_ins_clust");
 
+            // flyyear 进行一次乐观插入
 			err = btr_cur_optimistic_insert(
 				flags, cursor,
 				&offsets, &offsets_heap,
@@ -2612,6 +2625,7 @@ err_exit:
 				n_ext, thr, &mtr);
 
 			if (err == DB_FAIL) {
+                // flyyear 乐观插入失败，则进行悲观插入
 				err = btr_cur_pessimistic_insert(
 					flags, cursor,
 					&offsets, &offsets_heap,
@@ -3266,6 +3280,8 @@ then pessimistic descent down the tree. If the entry matches enough
 to a delete marked record, performs the insert by updating or delete
 unmarking the delete marked record.
 @return DB_SUCCESS, DB_LOCK_WAIT, DB_DUPLICATE_KEY, or some other error code */
+
+//flyyear 插入记录到聚集索引
 dberr_t
 row_ins_clust_index_entry(
 /*======================*/
@@ -3297,6 +3313,7 @@ row_ins_clust_index_entry(
 	ulint	flags;
 
 	if (!dict_table_is_intrinsic(index->table)) {
+        // flyyear flush log, make checkpoint(如果需要的话)
 		log_free_check();
 		flags = dict_table_is_temporary(index->table)
 			? BTR_NO_LOCKING_FLAG
@@ -3305,6 +3322,7 @@ row_ins_clust_index_entry(
 		flags = BTR_NO_LOCKING_FLAG | BTR_NO_UNDO_LOG_FLAG;
 	}
 
+    //flyyear 下面先乐观的插入，修改叶子节点BTR_MODIFY_LEAF
 	if (dict_table_is_intrinsic(index->table)
 	    && dict_index_is_auto_gen_clust(index)) {
 
@@ -3325,6 +3343,7 @@ row_ins_clust_index_entry(
 	DEBUG_SYNC_C_IF_THD(thr_get_trx(thr)->mysql_thd,
 			    "after_row_ins_clust_index_entry_leaf");
 
+    // flyyear 如果写入成功的话
 	if (err != DB_FAIL) {
 		DEBUG_SYNC_C("row_ins_clust_index_entry_leaf_after");
 		DBUG_RETURN(err);
@@ -3332,6 +3351,7 @@ row_ins_clust_index_entry(
 
 	/* Try then pessimistic descent to the B-tree */
 	if (!dict_table_is_intrinsic(index->table)) {
+        // flyyear flush log, 如果需要的话make checkpont
 		log_free_check();
 	} else if(!index->last_sel_cur) {
 		dict_allocate_mem_intrinsic_cache(index);
@@ -3340,6 +3360,7 @@ row_ins_clust_index_entry(
 		index->last_sel_cur->invalid = true;
 	}
 
+    // flyyear 乐观插入失败，尝试悲观的插入BTR_MODIFY_TREE
 	if (dict_table_is_intrinsic(index->table)
 	    && dict_index_is_auto_gen_clust(index)) {
 		err = row_ins_sorted_clust_index_entry(
@@ -3454,8 +3475,10 @@ row_ins_index_entry(
 			return(DB_LOCK_WAIT);});
 
 	if (dict_index_is_clust(index)) {
+        // flyyear 插入聚集索引
 		return(row_ins_clust_index_entry(index, entry, thr, 0, false));
 	} else {
+        // flyyear 插入辅助索引（二级索引）
 		return(row_ins_sec_index_entry(index, entry, thr, false));
 	}
 }
@@ -3583,6 +3606,7 @@ row_ins_index_entry_set_vals(
 Inserts a single index entry to the table.
 @return DB_SUCCESS if operation successfully completed, else error
 code or DB_LOCK_WAIT */
+// flyyear 插入单个索引项
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_ins_index_entry_step(
@@ -3596,6 +3620,7 @@ row_ins_index_entry_step(
 
 	ut_ad(dtuple_check_typed(node->row));
 
+    // flyyear 给索引项赋值
 	err = row_ins_index_entry_set_vals(node->index, node->entry, node->row);
 
 	if (err != DB_SUCCESS) {
@@ -3604,6 +3629,7 @@ row_ins_index_entry_step(
 
 	ut_ad(dtuple_check_typed(node->entry));
 
+    // flyyear 插入索引项
 	err = row_ins_index_entry(node->index, node->entry, thr);
 
 	DEBUG_SYNC_C_IF_THD(thr_get_trx(thr)->mysql_thd,
@@ -3614,6 +3640,7 @@ row_ins_index_entry_step(
 
 /***********************************************************//**
 Allocates a row id for row and inits the node->index field. */
+// flyyear 这面根据一个row id生成辅助索引
 UNIV_INLINE
 void
 row_ins_alloc_row_id_step(
@@ -3722,11 +3749,11 @@ row_ins(
 	if (node->duplicate) {
 		thr_get_trx(thr)->error_state = DB_DUPLICATE_KEY;
 	}
-
+    // flyyear 若innodb表没有唯一键和主键，用row_id组织索引
 	if (node->state == INS_NODE_ALLOC_ROW_ID) {
-
+        DBUG_PRINT("flyyear", ("not have index"));
 		row_ins_alloc_row_id_step(node);
-
+        // flyyear 获取row_id的索引
 		node->index = dict_table_get_first_index(node->table);
 		node->entry = UT_LIST_GET_FIRST(node->entry_list);
 
@@ -3744,8 +3771,10 @@ row_ins(
 
 	ut_ad(node->state == INS_NODE_INSERT_ENTRIES);
 
+    // flyyear 遍历所有的索引，向每个索引中插入记录
 	while (node->index != NULL) {
 		if (node->index->type != DICT_FTS) {
+            // flyyear 向索引中插入记录
 			err = row_ins_index_entry_step(node, thr);
 
 			switch (err) {
@@ -3794,6 +3823,7 @@ row_ins(
 			break;
 		}
 
+        //flyyear 获取下一个索引
 		node->index = dict_table_get_next_index(node->index);
 		node->entry = UT_LIST_GET_NEXT(tuple_list, node->entry);
 
@@ -3837,6 +3867,7 @@ row_ins(
 Inserts a row to a table. This is a high-level function used in SQL execution
 graphs.
 @return query thread to run next or NULL */
+// flyyear 插入一行到表里面，这个高级别的函数在SQL执行表里面
 que_thr_t*
 row_ins_step(
 /*=========*/
@@ -3894,6 +3925,7 @@ row_ins_step(
 			goto same_trx;
 		}
 
+        // flyyear 给表加IX锁
 		err = lock_table(0, node->table, LOCK_IX, thr);
 
 		DBUG_EXECUTE_IF("ib_row_ins_ix_lock_wait",
@@ -3931,6 +3963,7 @@ same_trx:
 
 	/* DO THE CHECKS OF THE CONSISTENCY CONSTRAINTS HERE */
 
+    // flyyear 插入记录
 	err = row_ins(node, thr);
 
 error_handling:

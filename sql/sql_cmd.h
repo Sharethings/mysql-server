@@ -46,6 +46,8 @@ class THD;
   of SQL commands. When the SQL statement text is analyzed, the parser will
   create one or more Sql_cmd objects to represent the actual SQL commands.
 */
+// flyyear  这面定义的是一个虚类Sql_cmd
+// 是解析和运行之间的接口
 class Sql_cmd : public Sql_alloc
 {
 private:

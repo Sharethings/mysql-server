@@ -242,6 +242,7 @@ namespace binary_log
 /**
   Enumeration type for the different types of log events.
 */
+// flyyear 枚举日志事件的不同类型
 enum Log_event_type
 {
   /**

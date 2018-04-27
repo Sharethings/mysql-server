@@ -236,6 +236,8 @@ public:
 
   const enum_duplicates duplicates;
 
+// flyyear
+// 这面的explicit用法是：用于描述类的构造函数，指定该构造函数为默认的构造函数，不可用于转换构造函数
   explicit
   Sql_cmd_insert_base(bool is_replace_arg, enum_duplicates duplicates_arg)
   : empty_field_list_on_rset(false),

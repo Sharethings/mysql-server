@@ -8050,7 +8050,8 @@ void MYSQL_BIN_LOG::set_max_size(ulong max_size_arg)
   mysql_mutex_unlock(&LOCK_log);
   DBUG_VOID_RETURN;
 }
-
+// flyyear 通过事务协调者日志实现2PC
+// 通过binlog方法（在tc_log.h文件里面说了，对于内部分布式事务的协调有三种方法
 /****** transaction coordinator log for 2pc - binlog() based solution ******/
 
 /**
@@ -8060,7 +8061,8 @@ void MYSQL_BIN_LOG::set_max_size(ulong max_size_arg)
   and copy it to the new binlog if rotated
   but let's check the behaviour of tc_log_page_waits first!
 */
-
+// flyyear 
+// open_binlog函数被重载
 int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
 {
   LOG_INFO log_info;
@@ -8070,6 +8072,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
     This function is used for 2pc transaction coordination.  Hence, it
     is never used for relay logs.
   */
+  // flyyear 这个函数被用来实现2pc事务的协调，因此，这个函数不会被用于relaylog
   DBUG_ASSERT(!is_relay_log);
   DBUG_ASSERT(total_ha_2pc > 1 || (1 == total_ha_2pc && opt_bin_log));
   DBUG_ASSERT(opt_name && opt_name[0]);
@@ -8084,6 +8087,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
   if (using_heuristic_recover())
   {
     /* generate a new binlog to mask a corrupted one */
+    // flyyear 这面产生一个新的binlig来覆盖损坏的
     mysql_mutex_lock(&LOCK_log);
     open_binlog(opt_name, 0, max_binlog_size, false,
                 true/*need_lock_index=true*/,
@@ -8094,6 +8098,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
     return 1;
   }
 
+  // 在index里面查找第一个binlog文件
   if ((error= find_log_pos(&log_info, NullS, true/*need_lock_index=true*/)))
   {
     if (error != LOG_INFO_EOF)
@@ -8117,6 +8122,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
     if (! fdle.is_valid())
       goto err;
 
+    // flyyear 查找异常关闭前使用的最后一个binlog
     do
     {
       strmake(log_name, log_info.log_file_name, sizeof(log_name)-1);
@@ -8128,6 +8134,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
       goto err;
     }
 
+    // flyyear 打开最后一个binlog
     if ((file= open_binlog_file(&log, log_name, &errmsg)) < 0)
     {
       sql_print_error("%s", errmsg);
@@ -8150,14 +8157,24 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
       total_ha_2pc == 1, to find the last valid group of events written.
       Later we will take this value and truncate the log if need be.
     */
+    // flyyear 如果binlog没有正确的关闭，那么表示服务器有可能宕掉了
+    // 如果是这样的话，我们需要调用MYSQL_BIN_LOG::recover函数去：
+    // 收集日志的XIDS
+    // 完成2PC
+    // 收集最后正确的位置
+
+    // 开始读取event
     if ((ev= Log_event::read_log_event(&log, 0, &fdle,
                                        opt_master_verify_checksum)) &&
+        // flyyear 上看读取event完后，下面开始判断是否是正常的关闭
+        // 这面使用了if判断条件的从前到后的顺序
         ev->get_type_code() == binary_log::FORMAT_DESCRIPTION_EVENT &&
         (ev->common_header->flags & LOG_EVENT_BINLOG_IN_USE_F ||
          DBUG_EVALUATE_IF("eval_force_bin_log_recovery", true, false)))
     {
       sql_print_information("Recovering after a crash using %s", opt_name);
       valid_pos= my_b_tell(&log);
+      // flyyear 下面开始恢复
       error= recover(&log, (Format_description_log_event *)ev, &valid_pos);
     }
     else
@@ -8172,6 +8189,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
 
     /* Trim the crashed binlog file to last valid transaction
       or event (non-transaction) base on valid_pos. */
+    // flyyear 删除binlog日志到最后有效的事务或事件通过valid_pos
     if (valid_pos > 0)
     {
       if ((file= mysql_file_open(key_file_binlog, log_name,
@@ -8183,6 +8201,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
       }
 
       /* Change binlog file size to valid_pos */
+      // flyyear 根据recover返回的有效size，对binlog进行删除
       if (valid_pos < binlog_size)
       {
         if (my_chsize(file, valid_pos, 0, MYF(MY_WME)))
@@ -9500,6 +9519,7 @@ commit_stage:
   @retval
     1                  error
 */
+// flyyear mysqld 服务从上次崩溃的binlog恢复
 int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
                             my_off_t *valid_pos)
 {
@@ -9510,6 +9530,7 @@ int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
     The flag is used for handling the case that a transaction
     is partially written to the binlog.
   */
+  // flyyear 这个标志用来处理事务部分写入到binlog中
   bool in_transaction= FALSE;
   int memory_page_size= my_getpagesize();
 
@@ -9522,6 +9543,7 @@ int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
   init_alloc_root(key_memory_binlog_recover_exec,
                   &mem_root, memory_page_size, memory_page_size);
 
+  // flyyear 依次读取binlog中event
   while ((ev= Log_event::read_log_event(log, 0, fdle, TRUE))
          && ev->is_valid())
   {
