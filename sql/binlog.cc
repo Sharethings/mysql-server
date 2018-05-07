@@ -8254,6 +8254,8 @@ void MYSQL_BIN_LOG::close()
   @retval 0    success
   @retval 1    error
 */
+// flyyear 事务协调者的预处理事务
+// 这个是内部xa在写binlog和redolog进行的两阶段提交
 int MYSQL_BIN_LOG::prepare(THD *thd, bool all)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::prepare");
@@ -8277,6 +8279,7 @@ int MYSQL_BIN_LOG::prepare(THD *thd, bool all)
   */
   thd->durability_property= HA_IGNORE_DURABILITY;
 
+  // flyyear 处理存储引擎层
   int error= ha_prepare_low(thd, all);
 
   DBUG_RETURN(error);
@@ -8308,6 +8311,7 @@ int MYSQL_BIN_LOG::prepare(THD *thd, bool all)
   @retval RESULT_ABORTED   error, transaction was neither logged nor committed
   @retval RESULT_INCONSISTENT  error, transaction was logged but not committed
 */
+// flyyear 提交事务
 TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::commit");
@@ -8479,6 +8483,8 @@ TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
     else if (real_trans && xid && trn_ctx->rw_ha_count(trx_scope) > 1 &&
              !trn_ctx->no_2pc(trx_scope))
     {
+     // flyyear 这个从网上搞到的，没有验证
+     // 现在binlog层加一个Xid_log_event类型的日志作为XA事务在binlog层提交的标志
       Xid_log_event end_evt(thd, xid);
       if (cache_mngr->trx_cache.finalize(thd, &end_evt))
         DBUG_RETURN(RESULT_ABORTED);
@@ -8544,7 +8550,7 @@ TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
       my_error(ER_TRANSACTION_ROLLBACK_DURING_COMMIT, MYF(0));
       DBUG_RETURN(RESULT_ABORTED);
     }
-
+    // flyyear 这面做binlog文件的磁盘fsync和提交到存储引擎
     if (ordered_commit(thd, all, skip_commit))
       DBUG_RETURN(RESULT_INCONSISTENT);
 
@@ -8617,6 +8623,7 @@ MYSQL_BIN_LOG::flush_thread_caches(THD *thd)
   @return Error code on error, zero on success
  */
 
+// flyyear 该函数将事务的日志写入到binlog文件的buff中
 int
 MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
                                          bool *rotate_var,
@@ -8649,6 +8656,8 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
   DBUG_EXECUTE_IF("crash_after_flush_engine_log", DBUG_SUICIDE(););
   assign_automatic_gtids_to_flush_group(first_seen);
   /* Flush thread caches to binary log. */
+  // flyyear 将commit队列中线程一个一个取出，然后执行flush_thread_caches，
+  // 将binlog cache 写入到binlog中
   for (THD *head= first_seen ; head ; head = head->next_to_commit)
   {
     std::pair<int,my_off_t> result= flush_thread_caches(head);
@@ -8918,6 +8927,7 @@ MYSQL_BIN_LOG::flush_cache_to_file(my_off_t *end_pos_var)
 /**
   Call fsync() to sync the file to disk.
 */
+// flyyear 同步日志到磁盘
 std::pair<bool, bool>
 MYSQL_BIN_LOG::sync_binlog_file(bool force)
 {
@@ -8942,6 +8952,7 @@ MYSQL_BIN_LOG::sync_binlog_file(bool force)
             engines.
      */
     if (DBUG_EVALUATE_IF("simulate_error_during_sync_binlog_file", 1,
+                    // flyyear 这面同步binlog buff中数据到disk
                          mysql_file_sync(log_file.file,
                                          MYF(MY_WME | MY_IGNORE_BADFD))))
     {
@@ -9083,6 +9094,8 @@ static inline int call_after_sync_hook(THD *queue_head)
       thd->get_trans_fixed_pos(&log_file, &pos);
 
   if (DBUG_EVALUATE_IF("simulate_after_sync_hook_error", 1, 0) ||
+      // flyyear 这面调用RUN_HOOK等待binlog_storage观察者，事件发生后调用
+      // 此观察的after_sync函数
       RUN_HOOK(binlog_storage, after_sync, (queue_head, log_file, pos)))
   {
     sql_print_error("Failed to run 'after_sync' hooks");
@@ -9200,6 +9213,15 @@ void MYSQL_BIN_LOG::handle_binlog_flush_or_sync_error(THD *thd,
                be skipped (it is handled by the caller somehow) and @c
                false otherwise (the normal case).
  */
+// flyyear 这个是比较重要的函数
+// 处理步骤如下：
+// 1. 将binlog数据刷写到文件中
+// 2. 将当前的binlog文件名和位点注册到semisync模块中，以便后面等待备机的回复
+// 3. 调用函数MYSQL_BIN_LOG::sync_binlog_file()将binlog文件sync到磁盘，到这里事务将不能回滚，即使mysqld崩溃了事务也会最终提交
+// 4. 调用MYSQL_BIN_LOG::update_binlog_end_pos()更新binlog最后sync的位点信息，这时为备库复制服务的binlog_dump线程才可以读到这个事务,可以参考Log_event::read_log_event()
+// 5. 如果semisync模块配置了rpl_semi_sync_master_wait_point为after_sync,那么当前session将在这里等待备机回复在继续
+// 6. ordered_commit()接下来会最终调用ha_commit_low()在存储引擎层提交
+// 7. 如果rpl_semi_sync_master_wait_point参数为after_commit，当前Session就会在oerder_commit()接下来调用的MYSQL_BIN_LOG::finish_commit()函数里等待备机的回复
 int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::ordered_commit");
@@ -9248,6 +9270,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 
   /*
     Stage #1: flushing transactions to binary log
+    // flyyear 这面只是将事务刷新到binlog 的buff里面
 
     While flushing, we allow new threads to enter and will process
     them in due time. Once the queue was empty, we cannot reap
@@ -9296,6 +9319,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     goto commit_stage;
   }
   DEBUG_SYNC(thd, "waiting_in_the_middle_of_flush_stage");
+  // flyyear 将事务的日志写入binlog文件的buff中
   flush_error= process_flush_stage_queue(&total_bytes, &do_rotate,
                                                  &wait_queue);
 
@@ -9340,6 +9364,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   /*
     Stage #2: Syncing binary log file to disk
   */
+  // flyyear 下面将binlog buff 写入到磁盘里面去
 
   if (change_stage(thd, Stage_manager::SYNC_STAGE, wait_queue, &LOCK_log, &LOCK_sync))
   {
@@ -9357,6 +9382,14 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     for every group just like how it is done when sync_binlog= 1.
   */
   if (!flush_error && (sync_counter + 1 >= get_sync_period()))
+    // flyyear 这面进行等待
+    // opt_binlog_group_commit_sync_no_delay_count
+    // 表示该事务组提交之前总共等待累积到多少个事务
+    // opt_binlog_group_commit_sync_delay
+    // 表示该事务组总共等待多长时间后进行提交
+    // 任何一个满足就可以往下走
+    // 因为有这个等待，可以让更多的事务的binlog通过一次写binlog文件磁盘来完成提交，获得更高的吞吐量
+    // 这俩值默认都是0, 所以不会在这面等待
     stage_manager.wait_count_or_timeout(opt_binlog_group_commit_sync_no_delay_count,
                                         opt_binlog_group_commit_sync_delay,
                                         Stage_manager::SYNC_STAGE);
@@ -9366,6 +9399,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   if (flush_error == 0 && total_bytes > 0)
   {
     DEBUG_SYNC(thd, "before_sync_binlog_file");
+    // flyyear 这面将binlog buff 同步到disk
     std::pair<bool, bool> result= sync_binlog_file(false);
     sync_error= result.first;
   }
@@ -9374,6 +9408,9 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   {
     THD *tmp_thd= final_queue;
 
+    // flyyear
+    // 这面先找到最后一个提交的的线程（因为是mgc，多个事务排队提交机制),因为已经将要提交事务的线程组成了一个链表，通过从头到尾找，可以找到最后一个线程
+    // 然后调用update_binlog_end_pos函数，更新binlog文件的最后的位置binlog_end_pos, 并且发送信号给dump thread，告知binlog的位置已经更新
     while (tmp_thd->next_to_commit != NULL)
       tmp_thd= tmp_thd->next_to_commit;
     if (flush_error == 0 && sync_error == 0)
@@ -9385,6 +9422,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   leave_mutex_before_commit_stage= &LOCK_sync;
   /*
     Stage #3: Commit all transactions in order.
+    // flyyear 顺序提交所有的事务
 
     This stage is skipped if we do not need to order the commits and
     each thread have to execute the handlerton commit instead.
@@ -9417,6 +9455,8 @@ commit_stage:
                     DEBUG_SYNC(thd, "before_process_commit_stage_queue"););
 
     if (flush_error == 0 && sync_error == 0)
+        // flyyear 这面表示binlog
+        // flush到buff，并且同步到磁盘都没有问题，然后就开始等待从库完成
       sync_error= call_after_sync_hook(commit_queue);
 
     /*

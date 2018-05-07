@@ -52,6 +52,7 @@ void thr_set_sync_wait_callback(void (*before_wait)(void),
     -1 error
 */
 
+// flyyear 这面才是调用fsync同步数据
 int my_sync(File fd, myf my_flags)
 {
   int res;

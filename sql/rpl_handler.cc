@@ -25,6 +25,7 @@
 
 #include <vector>
 
+// flyyear 定义全局指针变量，指向各种需要用到的插件
 Trans_delegate *transaction_delegate;
 Binlog_storage_delegate *binlog_storage_delegate;
 Server_state_delegate *server_state_delegate;
@@ -123,6 +124,7 @@ int get_user_var_str(const char *name, char *value,
   return 0;
 }
 
+// flyyear 初始化需要的观察者
 int delegates_init()
 {
   static my_aligned_storage<sizeof(Trans_delegate),

@@ -155,6 +155,8 @@ public:
   }
 
 private:
+  // flyyear 定义一个链表，里面存储了Observer_info类型的成员
+  // 还有一把读写锁进行保护
   Observer_info_list observer_info_list;
   mysql_rwlock_t lock;
   MEM_ROOT memroot;
@@ -322,6 +324,7 @@ extern Binlog_relay_IO_delegate *binlog_relay_io_delegate;
   if there is no observers in the delegate, we can return 0
   immediately.
 */
+// flyyear 这面使用宏来调用相应的代理
 #define RUN_HOOK(group, hook, args)             \
   (group ##_delegate->is_empty() ?              \
    0 : group ##_delegate->hook args)

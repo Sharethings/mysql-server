@@ -43,6 +43,12 @@ typedef Slave_vector::iterator Slave_vector_it;
   add_slave: maintain a new semisync slave's information
   remove_slave: remove a semisync slave's information
  */
+// flyyear Ack_receiver用来控制ack receive 线程并且保存线程使用的从库信息
+// ack receive线程主要四种操作：
+// 1. 启动一个ack receive线程
+// 2. 停止一个ack receive线程
+// 3. 保存一个新的半同步从库的信息
+// 4. 删除一个半同步从库的信息
 class Ack_receiver : public ReplSemiSyncBase
 {
 public:

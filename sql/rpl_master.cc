@@ -310,6 +310,7 @@ bool show_slave_hosts(THD* thd)
   } while (0)
 
 
+// flyyear 发送binlog给slave
 bool com_binlog_dump(THD *thd, char *packet, size_t packet_length)
 {
   DBUG_ENTER("com_binlog_dump");
@@ -334,10 +335,13 @@ bool com_binlog_dump(THD *thd, char *packet, size_t packet_length)
 
   DBUG_PRINT("info", ("pos=%lu flags=%d server_id=%d", pos, flags, thd->server_id));
 
+  // flyyear
+  // 如果新的server_id相同的slave注册上来，master会移除跟该slave_id匹配的binlog dump线程
   kill_zombie_dump_threads(thd);
 
   query_logger.general_log_print(thd, thd->get_command(), "Log: '%s'  Pos: %ld",
                                  packet + 10, (long) pos);
+  // flyyear 这面开始发送binlog的信息
   mysql_binlog_send(thd, thd->mem_strdup(packet + 10), (my_off_t) pos, NULL, flags);
 
   unregister_slave(thd, true, true/*need_lock_slave_list=true*/);
@@ -404,9 +408,11 @@ error_malformed_packet:
   DBUG_RETURN(true);
 }
 
+// flyyear 这面发送binlig
 void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
                        Gtid_set* slave_gtid_executed, uint32 flags)
 {
+    // flyyear 这面是定义一个Binlog_sender的类
   Binlog_sender sender(thd, log_ident, pos, slave_gtid_executed, flags);
 
   sender.run();

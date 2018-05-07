@@ -865,7 +865,7 @@ void cleanup_items(Item *item)
   @retval
     1  request of thread shutdown (see dispatch_command() description)
 */
-
+// flyyear 这面开始执行命令
 bool do_command(THD *thd)
 {
   bool return_value;
@@ -1330,8 +1330,10 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     break;
   }
 #ifdef HAVE_REPLICATION
+  // flyyear 这面是注册从库的处理
   case COM_REGISTER_SLAVE:
   {
+    DBUG_PRINT("flyyear", ("in sql_parse.cc COM_REGISTER_SLAVE"));
     // TODO: access of protocol_classic should be removed
     if (!register_slave(thd,
       thd->get_protocol_classic()->get_raw_packet(),
@@ -1670,15 +1672,19 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     error=TRUE;					// End server
     break;
 #ifndef EMBEDDED_LIBRARY
+    // flyyear 从库根据GTID信息向Master请求数据
   case COM_BINLOG_DUMP_GTID:
     // TODO: access of protocol_classic should be removed
+    DBUG_PRINT("flyyear", ("in sql_parse.cc COM_BINLOG_DUMP_GTID"));
     error=
       com_binlog_dump_gtid(thd,
         (char *)thd->get_protocol_classic()->get_raw_packet(),
         thd->get_protocol_classic()->get_packet_length());
     break;
+    // flyyear 从库根据file、pos向Master请求数据
   case COM_BINLOG_DUMP:
     // TODO: access of protocol_classic should be removed
+    DBUG_PRINT("flyyear", ("in sql_parse.cc COM_BINLOG_DUMP"));
     error=
       com_binlog_dump(thd,
         (char*)thd->get_protocol_classic()->get_raw_packet(),
@@ -3416,6 +3422,7 @@ end_with_restore_list:
 
   case SQLCOM_SLAVE_START:
   {
+      // flyyear 这面启动从库
     res= start_slave_cmd(thd);
     break;
   }
@@ -3575,6 +3582,7 @@ end_with_restore_list:
     // 这面也是通过虚基类实现的多态
     // insert 语句是调用sql_insert.cc里面的execute函数
     res= lex->m_sql_cmd->execute(thd);
+    DBUG_PRINT("flyyear", ("in sqlparse.cc SQLCOM_INSERT_SELECT"));
     break;
   }
   case SQLCOM_DELETE:
@@ -4263,6 +4271,7 @@ end_with_restore_list:
     break;
   case SQLCOM_COMMIT:
   {
+    DBUG_PRINT("flyyear", ("sql_parse.cc in SQLCOM_COMMIT"));
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4967,12 +4976,14 @@ end_with_restore_list:
     my_ok(thd);
     break;
   }
+  // flyyear 上面的sql语句，比如insert如果没有开启autocommit，则不会执行到这面
   goto finish;
 
 error:
   res= TRUE;
 
 finish:
+  DBUG_PRINT("flyyear", ("sql_parse.cc exec ok, in finish"));
   THD_STAGE_INFO(thd, stage_query_end);
 
   // Cleanup EXPLAIN info
@@ -5006,12 +5017,14 @@ finish:
     /* report error issued during command execution */
     if (thd->killed_errno())
       thd->send_kill_message();
+    // flyyear 这面如果执行命令出现问题，将进行回滚
     if (thd->is_error() || (thd->variables.option_bits & OPTION_MASTER_SQL_ERROR))
       trans_rollback_stmt(thd);
     else
     {
       /* If commit fails, we should be able to reset the OK status. */
       thd->get_stmt_da()->set_overwrite_status(true);
+      // flyyear 这面进行提交
       trans_commit_stmt(thd);
       thd->get_stmt_da()->set_overwrite_status(false);
     }

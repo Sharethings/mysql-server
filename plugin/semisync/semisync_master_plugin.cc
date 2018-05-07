@@ -20,6 +20,7 @@
 #include "semisync_master_ack_receiver.h"
 
 ReplSemiSyncMaster repl_semisync;
+// flyyear 这面定义一个全局变量Ack_receiver
 Ack_receiver ack_receiver;
 
 /* The places at where semisync waits for binlog ACKs. */
@@ -28,6 +29,7 @@ enum enum_wait_point {
   WAIT_AFTER_COMMIT
 };
 
+// flyyear 这面怎么默认是AFTER_COMMIT？？不应该是AFTER_SYNC吗？？
 static ulong rpl_semi_sync_master_wait_point= WAIT_AFTER_COMMIT;
 
 static bool SEMI_SYNC_DUMP= true;
@@ -58,6 +60,7 @@ int repl_semi_report_binlog_update(Binlog_storage_param *param,
       we know how long to wait for the binlog to the replicated to
       the slave in synchronous replication.
     */
+      // flyyear 存储当前的binlog文件名和偏移量， 更新当前最大的事务binlog位置
     error= repl_semisync.writeTranxInBinlog(log_file,
                                             log_pos);
   }
@@ -65,6 +68,7 @@ int repl_semi_report_binlog_update(Binlog_storage_param *param,
   return error;
 }
 
+// flyyear binlog已经同步到某个位置的确认函数
 int repl_semi_report_binlog_sync(Binlog_storage_param *param,
                                  const char *log_file,
                                  my_off_t log_pos)
@@ -128,6 +132,7 @@ int repl_semi_binlog_dump_start(Binlog_transmit_param *param,
 
   if (semi_sync_slave != 0)
   {
+      // flyyear ack_receiver添加需要监听的从库ack消息
     if (ack_receiver.add_slave(current_thd))
     {
       sql_print_error("Failed to register slave to semi-sync ACK receiver "
@@ -138,9 +143,11 @@ int repl_semi_binlog_dump_start(Binlog_transmit_param *param,
     my_set_thread_local(THR_RPL_SEMI_SYNC_DUMP, &SEMI_SYNC_DUMP);
 
     /* One more semi-sync slave */
+    // flyyear 连接的备库计数+1
     repl_semisync.add_slave();
 
     /* Tell server it will observe the transmission.*/
+    // flyyear 设置观察者模式标志
     param->set_observe_flag();
 
     /*
@@ -159,6 +166,7 @@ int repl_semi_binlog_dump_start(Binlog_transmit_param *param,
   return 0;
 }
 
+// flyyear 备库断开调用
 int repl_semi_binlog_dump_end(Binlog_transmit_param *param)
 {
   bool semi_sync_slave= is_semi_sync_dump();
@@ -168,8 +176,10 @@ int repl_semi_binlog_dump_end(Binlog_transmit_param *param)
                         param->server_id);
   if (semi_sync_slave)
   {
+      // flyyear 从ac_receiver中移除该从库信息
     ack_receiver.remove_slave(current_thd);
     /* One less semi-sync slave */
+    // flyyear 备库连接个数-1
     repl_semisync.remove_slave();
     my_set_thread_local(THR_RPL_SEMI_SYNC_DUMP, NULL);
   }
@@ -417,8 +427,8 @@ Trans_observer trans_observer = {
 Binlog_storage_observer storage_observer = {
   sizeof(Binlog_storage_observer), // len
 
-  repl_semi_report_binlog_update, // report_update
-  repl_semi_report_binlog_sync,   // after_sync
+  repl_semi_report_binlog_update, // report_update // flyyear 这面binlog刷到binlog buff里了
+  repl_semi_report_binlog_sync,   // after_sync     // flyyear 这面binlog已经落盘但是没有同步到slave
 };
 
 Binlog_transmit_observer transmit_observer = {
@@ -578,6 +588,7 @@ static void init_semisync_psi_keys(void)
 }
 #endif /* HAVE_PSI_INTERFACE */
 
+// flyyear  半同步插件初始化调用函数
 static int semi_sync_master_plugin_init(void *p)
 {
 #ifdef HAVE_PSI_INTERFACE
@@ -588,6 +599,7 @@ static int semi_sync_master_plugin_init(void *p)
 
   if (repl_semisync.initObject())
     return 1;
+  // flyyear 这面初始化ack_receiver，init函数里面调用start函数
   if (ack_receiver.init())
     return 1;
   if (register_trans_observer(&trans_observer, p))
@@ -631,6 +643,7 @@ struct Mysql_replication semi_sync_master_plugin= {
 /*
   Plugin library descriptor
 */
+// flyyear 这面调用的宏在include/mysql/plugin.h
 mysql_declare_plugin(semi_sync_master)
 {
   MYSQL_REPLICATION_PLUGIN,
@@ -639,8 +652,8 @@ mysql_declare_plugin(semi_sync_master)
   "He Zhenxing",
   "Semi-synchronous replication master",
   PLUGIN_LICENSE_GPL,
-  semi_sync_master_plugin_init, /* Plugin Init */
-  semi_sync_master_plugin_deinit, /* Plugin Deinit */
+  semi_sync_master_plugin_init, /* Plugin Init */ // flyyear 插件使用的时候调用这个函数
+  semi_sync_master_plugin_deinit, /* Plugin Deinit */ // flyyear 插件停止使用调用的函数
   0x0100 /* 1.0 */,
   semi_sync_master_status_vars,	/* status variables */
   semi_sync_master_system_vars,	/* system variables */

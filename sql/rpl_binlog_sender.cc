@@ -108,6 +108,7 @@ void Binlog_sender::init()
                         thd->thread_id(), thd->server_id,
                         m_start_file, m_start_pos);
 
+  // flyyear 开始dump之前
   if (RUN_HOOK(binlog_transmit, transmit_start,
                (thd, m_flag, m_start_file, m_start_pos,
                 &m_observe_transmission)))
@@ -189,6 +190,7 @@ void Binlog_sender::cleanup()
   DBUG_VOID_RETURN;
 }
 
+// flyyear 这面发送binlog event给客户端
 void Binlog_sender::run()
 {
   DBUG_ENTER("Binlog_sender::run");
@@ -612,6 +614,7 @@ inline bool Binlog_sender::skip_event(const uchar *event_ptr, uint32 event_len,
   DBUG_RETURN(in_exclude_group);
 }
 
+// flyyear master binlog 更新后，会调用signal_update，并且更新全局变量binlog_end_pos, binlog最后的位置
 int Binlog_sender::wait_new_events(my_off_t log_pos)
 {
   int ret= 0;

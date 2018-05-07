@@ -28,6 +28,8 @@
   The major logic of dump thread is implemented in this class. It sends
   required binlog events to clients according to their requests.
 */
+// flyyear 这个类实现了dump线程主要的逻辑。
+// 根据请求发送所需要的binlog event给从库
 class Binlog_sender
 {
 public:

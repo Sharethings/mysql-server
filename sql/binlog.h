@@ -743,6 +743,9 @@ public:
     DBUG_VOID_RETURN;
   }
   void set_max_size(ulong max_size_arg);
+  // flyyear 发送binlog更新的信号
+  // 从主库同步binlog到从库的dump线程，会接收到这个binlog已有更新的信号，然后启动
+  // dump binlog的流程
   void signal_update()
   {
     DBUG_ENTER("MYSQL_BIN_LOG::signal_update");
@@ -751,17 +754,23 @@ public:
     DBUG_VOID_RETURN;
   }
 
+  // flyyear 更新binlog最后的位置
   void update_binlog_end_pos()
   {
     /*
       binlog_end_pos is used only on master's binlog right now. It is possible
       to use it on relay log.
     */
+      // flyyear
+      // 这面的signal_update函数用来发送binlog更新的信号,因此从主库同步binlog到
+      // 从库的dump线程，会接收到这个binlog已有更新的信号，然后启动dump
+      // binlog的流程
     if (is_relay_log)
       signal_update();
     else
     {
       lock_binlog_end_pos();
+      // flyyear binlog_end_pos 是全局变量，标记binlog最后的位置
       binlog_end_pos= my_b_tell(&log_file);
       signal_update();
       unlock_binlog_end_pos();

@@ -39,6 +39,7 @@ int repl_semi_reset_slave(Binlog_relay_IO_param *param)
   return 0;
 }
 
+// flyyea 告知主从我们都要半同步
 int repl_semi_slave_request_dump(Binlog_relay_IO_param *param,
 				 uint32 flags)
 {
@@ -102,6 +103,9 @@ int repl_semi_slave_request_dump(Binlog_relay_IO_param *param,
   return 0;
 }
 
+// flyyear 从库读取event
+// 由于我们在主库上对packet头部又附加了3个比特，这里需要将其读出来，
+// 同时需要更新event_buf及event_len的值
 int repl_semi_slave_read_event(Binlog_relay_IO_param *param,
 			       const char *packet, unsigned long len,
 			       const char **event_buf, unsigned long *event_len)
@@ -115,6 +119,7 @@ int repl_semi_slave_read_event(Binlog_relay_IO_param *param,
   return 0;
 }
 
+// flyyear 将binlog写入到ralaylog后调用
 int repl_semi_slave_queue_event(Binlog_relay_IO_param *param,
 				const char *event_buf,
 				unsigned long event_len,
@@ -127,6 +132,7 @@ int repl_semi_slave_queue_event(Binlog_relay_IO_param *param,
       should not cause the slave IO thread to stop, and the error
       messages are already reported.
     */
+      // flyyear 向主库发送数据包，包括当前完成的binlog文件名及偏移量信息
     (void) repl_semisync.slaveReply(param->mysql,
                                     param->master_log_name,
                                     param->master_log_pos);

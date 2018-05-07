@@ -164,6 +164,7 @@ typedef struct Trans_param {
 /**
    Observes and extends transaction execution
 */
+// flyyear 事务观察者，在事务提交或回滚时候回掉
 typedef struct Trans_observer {
   uint32 len;
 
@@ -329,6 +330,8 @@ typedef struct Binlog_storage_param {
 /**
    Observe binlog logging storage
 */
+// flyyear 此结构体用来观察binlog的刷新和落盘的情况
+// 这面是存储观察者，在binlog写盘的时候回调
 typedef struct Binlog_storage_observer {
   uint32 len;
 
@@ -379,6 +382,7 @@ typedef struct Binlog_transmit_param {
 /**
    Observe and extends the binlog dumping thread.
 */
+// flyyear binlog dump观察者，会在binlog被发送到slave的过程中被调用
 typedef struct Binlog_transmit_observer {
   uint32 len;
 
@@ -512,6 +516,7 @@ typedef struct Binlog_relay_IO_param {
 /**
    Observes and extends the service of slave IO thread.
 */
+// flyyear 用于从库的观察者， relay日志IO观察者
 typedef struct Binlog_relay_IO_observer {
   uint32 len;
 

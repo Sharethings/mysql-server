@@ -81,6 +81,7 @@ int ReplSemiSyncSlave::slaveStart(Binlog_relay_IO_param *param)
 			param->master_log_name[0] ? param->master_log_name : "FIRST",
 			(unsigned long)param->master_log_pos);
 
+  // flyyear 从库开启了半同步 设置从库半同步状态为1
   if (semi_sync && !rpl_semi_sync_slave_status)
     rpl_semi_sync_slave_status= 1;
   return 0;

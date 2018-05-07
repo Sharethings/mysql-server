@@ -646,6 +646,7 @@ int stop_slave(THD *thd)
     @retval      false      ok
     @retval      true       not ok.
 */
+// flyyear 启动从库命令的进入点
 bool start_slave_cmd(THD *thd)
 {
   DBUG_ENTER("start_slave_cmd");
@@ -1963,6 +1964,7 @@ end:
     started the threads that were not previously running
 */
 
+// flyyear 启动slave线程
 bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
                          Master_info* mi, int thread_mask)
 {
@@ -2010,6 +2012,7 @@ bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
 #ifdef HAVE_PSI_INTERFACE
                                  key_thread_slave_io,
 #endif
+                                 // flyyear handle_slave_io 回调函数
                                  handle_slave_io, lock_io, lock_cond_io,
                                  cond_io,
                                  &mi->slave_running, &mi->slave_run_id,
@@ -3410,6 +3413,7 @@ static int write_ignored_events_info_to_relay_log(THD *thd, Master_info *mi)
 }
 
 
+// flyyear 这面将从库注册到主库上去
 int register_slave_on_master(MYSQL* mysql, Master_info *mi,
                              bool *suppress_warnings)
 {
@@ -3467,6 +3471,7 @@ int register_slave_on_master(MYSQL* mysql, Master_info *mi,
   /* The master will fill in master_id */
   int4store(pos, 0);                    pos+= 4;
 
+  // flyyear 这面发送注册的命令到主库
   if (simple_command(mysql, COM_REGISTER_SLAVE, buf, (size_t) (pos- buf), 0))
   {
     if (mysql_errno(mysql) == ER_NET_READ_INTERRUPTED)
@@ -4305,6 +4310,7 @@ static inline bool slave_sleep(THD *thd, time_t seconds,
   return ret;
 }
 
+// flyyear 这面开始是向主库请求binlog
 static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
                         bool *suppress_warnings)
 {
@@ -4315,6 +4321,7 @@ static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
   size_t command_size= 0;
   enum_server_command command= mi->is_auto_position() ?
     COM_BINLOG_DUMP_GTID : COM_BINLOG_DUMP;
+  DBUG_PRINT("flyyear", ("mi->is_auto_position is %v, command is %v", mi->is_auto_position(), command));
   uchar* command_buffer= NULL;
   ushort binlog_flags= 0;
 
@@ -4324,6 +4331,9 @@ static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
     goto err;
 
   *suppress_warnings= false;
+  // flyyear 是否是GTID模式
+  // 如果是GTID模式，那么把本地的GTID集合及其他相关信息传给master
+  // 如果不是GTID模式，那么就把master log file和Pos传给主库
   if (command == COM_BINLOG_DUMP_GTID)
   {
     // get set of GTIDs
@@ -5497,6 +5507,14 @@ static int try_to_reconnect(THD *thd, MYSQL *mysql, Master_info *mi,
 
   @return Always 0.
 */
+// flyyear 从库IO线程入口函数
+// 该函数的核心做了以下三个事情：
+// 1. safe_connect
+// 2. register_slave_on_master
+// 3. request_dump
+// 4. event_len=reqd_event()
+// 先以标准的连接方式连上master
+// Mysql，然后把自己注册到master上去，接着调用request_dump向master请求binlog数据，最后一个一个event读取并存放到本地relay log
 extern "C" void *handle_slave_io(void *arg)
 {
   THD *thd= NULL; // needs to be first for thread_stack
@@ -5566,6 +5584,7 @@ extern "C" void *handle_slave_io(void *arg)
   /* This must be called before run any binlog_relay_io hooks */
   my_set_thread_local(RPL_MASTER_INFO, mi);
 
+  // flyyear 这面调用binlog_relay_io观察者的thread_start函数
   if (RUN_HOOK(binlog_relay_io, thread_start, (thd, mi)))
   {
     mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
@@ -5582,6 +5601,7 @@ extern "C" void *handle_slave_io(void *arg)
 
   THD_STAGE_INFO(thd, stage_connecting_to_master);
   // we can get killed during safe_connect
+  // flyyear 连接到主库上去 可以强制停止
   if (!safe_connect(thd, mysql, mi))
   {
     sql_print_information("Slave I/O thread%s: connected to master '%s@%s:%d',"
@@ -5674,6 +5694,7 @@ connected:
       Register ourselves with the master.
     */
     THD_STAGE_INFO(thd, stage_registering_slave_on_master);
+    // flyyear 将该从库注册到主库上
     if (register_slave_on_master(mysql, mi, &suppress_warnings))
     {
       if (!check_io_slave_killed(thd, mi, "Slave I/O thread killed "
@@ -5705,6 +5726,7 @@ connected:
   while (!io_slave_killed(thd,mi))
   {
     THD_STAGE_INFO(thd, stage_requesting_binlog_dump);
+    // flyyear 调用request_dump向master请求binlog数据
     if (request_dump(thd, mysql, mi, &suppress_warnings))
     {
       sql_print_error("Failed on request_dump()%s", mi->get_for_channel_str());
@@ -5739,6 +5761,7 @@ requesting master dump") ||
          we're in fact receiving nothing.
       */
       THD_STAGE_INFO(thd, stage_waiting_for_master_to_send_event);
+      // flyyear 读取event，并且存放到本地relaylog中
       event_len= read_event(mysql, mi, &suppress_warnings);
       if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
 reading event"))
@@ -5805,6 +5828,7 @@ Stopping slave I/O thread due to out-of-memory error from master");
       /* XXX: 'synced' should be updated by queue_event to indicate
          whether event has been synced to disk */
       bool synced= 0;
+      // flyyear 将binlog写入到ralaylog
       if (queue_event(mi, event_buf, event_len))
       {
         mi->report(ERROR_LEVEL, ER_SLAVE_RELAY_LOG_WRITE_FAILURE,
@@ -5822,6 +5846,7 @@ Stopping slave I/O thread due to out-of-memory error from master");
       }
 
       mysql_mutex_lock(&mi->data_lock);
+      // flyyear 刷新master_info信息
       if (flush_master_info(mi, FALSE))
       {
         mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
@@ -6085,6 +6110,7 @@ int check_temp_dir(char* tmp_file, const char *channel_name)
 /*
   Worker thread for the parallel execution of the replication events.
 */
+// flyyear worker线程并行的执行复制事件
 extern "C" void *handle_slave_worker(void *arg)
 {
   THD *thd;                     /* needs to be first for thread_stack */
@@ -7095,6 +7121,8 @@ end:
 
   @return Always 0.
 */
+// flyyear 从库sql线程函数入口
+// 主要作为协调器启动和分配worker线程
 extern "C" void *handle_slave_sql(void *arg)
 {
   THD *thd;                     /* needs to be first for thread_stack */
@@ -7976,6 +8004,7 @@ static int queue_old_event(Master_info *mi, const char *buf,
 
   @todo Make this a member of Master_info.
 */
+// flyyear 保存从主库获得的event到ralaylog
 bool queue_event(Master_info* mi,const char* buf, ulong event_len)
 {
   bool error= false;

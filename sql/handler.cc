@@ -1657,6 +1657,7 @@ int commit_owned_gtid_by_partial_command(THD *thd)
     TODO: This should be fixed in later ( >= 5.1) releases.
 */
 
+// flyyear 该函数负责处理binlog层和存储引擎层的提交
 int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock)
 {
   int error= 0;
@@ -1778,6 +1779,8 @@ int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock)
     }
 
     if (!trn_ctx->no_2pc(trx_scope) && (trn_ctx->rw_ha_count(trx_scope) > 1))
+    // flyyear 在引擎层生成一个XA事务
+    // 这面的tc_log是虚基类，实现了多态, 这面查看binlog.cc里面的prepare()函数
       error= tc_log->prepare(thd, all);
   }
   /*
@@ -1793,6 +1796,7 @@ int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock)
 
     xid_state->set_state(XID_STATE::XA_PREPARED);
   }
+  // flyyear 提交事务
   if (error || (error= tc_log->commit(thd, all)))
   {
     ha_rollback_trans(thd, all);
@@ -2319,6 +2323,7 @@ int ha_rollback_to_savepoint(THD *thd, SAVEPOINT *sv)
   DBUG_RETURN(error);
 }
 
+// flyyear 这个函数下面调用存储引擎层的prepare生成XA事务
 int ha_prepare_low(THD *thd, bool all)
 {
   int error= 0;

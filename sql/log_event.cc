@@ -1994,6 +1994,7 @@ my_b_write_sint32_and_uint32(IO_CACHE *file, int32 si, uint32 ui)
   
   @retval   - number of bytes scanned from ptr.
 */
+// flyyear 详细描述了MySQL的各种数据类型的二进制表现形式
 static size_t
 log_event_print_value(IO_CACHE *file, const uchar *ptr,
                       uint type, uint meta,

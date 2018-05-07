@@ -80,6 +80,7 @@ bool Ack_receiver::start()
 #ifndef _WIN32
         pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM) != 0 ||
 #endif
+        // flyyear 新建一个ack线程, ack_receive_handler回调函数
         mysql_thread_create(key_ss_thread_Ack_receiver_thread, &m_pid,
                             &attr, ack_receive_handler, this))
     {
@@ -197,6 +198,8 @@ static void init_net(NET *net, unsigned char *buff, unsigned int buff_len)
   net->read_pos= net->buff;
 }
 
+// flyyear 每个ack_receiver线程都会执行到这面
+// 通过select或者poll来处理从库的ack
 void Ack_receiver::run()
 {
   NET net;
@@ -239,6 +242,9 @@ void Ack_receiver::run()
       m_slaves_changed= false;
     }
     ret= listener.listen_on_sockets();
+    // flyyear
+    // 因为select和poll不是epoll通过回调的方式来处理条件满足的情况，所以这面通过返回值
+    // 如果返回值<=0表明没有收到回包
     if (ret <= 0)
     {
       mysql_mutex_unlock(&m_mutex);
@@ -253,10 +259,12 @@ void Ack_receiver::run()
       continue;
     }
 
+    // flyyear 这面说明有收到ack包的
     set_stage_info(stage_reading_semi_sync_ack);
     i= 0;
     while (i < m_slaves.size())
     {
+        // flyyear 找到回包的那个
       if (listener.is_socket_active(i))
       {
         ulong len;
@@ -270,9 +278,10 @@ void Ack_receiver::run()
 
         do {
           net_clear(&net, 0);
-
+         // flyyear 读取包
           len= my_net_read(&net);
           if (likely(len != packet_error))
+              // flyyear 上报从库回包的情况
             repl_semisync.reportReplyPacket(m_slaves[i].server_id(),
                                             net.read_pos, len);
           else if (net.last_errno == ER_NET_READ_ERROR)

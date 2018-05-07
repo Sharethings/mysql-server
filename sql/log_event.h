@@ -466,6 +466,7 @@ typedef struct st_mts_db_names
   unless otherwise specified.
 
 */
+// flyyear binlog events的抽象基类
 class Log_event
 {
 public:

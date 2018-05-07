@@ -846,6 +846,7 @@ public:
     @param[in] log_file_name  binlog file name of the ack
     @param[in] log_file_pos   binlog file position of the ack
   */
+  // flyyear 处理从库的ack回包
   void handleAck(int server_id, const char *log_file_name,
                  my_off_t log_file_pos)
   {

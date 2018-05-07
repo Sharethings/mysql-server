@@ -344,6 +344,7 @@ int add_new_channel(Master_info** mi, const char* channel);
       There was a timeout when stopping the IO thread
     @retval ER_ERROR_DURING_FLUSH_LOGS
       There was an error while flushing the log/repositories
+// flyyear binlog dump观察者，会在binlog被发送到slave的过程中被调用
 */
 int terminate_slave_threads(Master_info* mi, int thread_mask,
                             ulong stop_wait_timeout,

@@ -132,6 +132,12 @@ int ActiveTranx::compare(const char *log_file_name1, my_off_t log_file_pos1,
   return 0;
 }
 
+
+// flyyear
+// 将该事务的位点信息存储到active_tranxs中（active_tranxs_->insert_tranx_node(log_file_name,
+// log_file_pos)），这是一个链表，用来存储所有活跃的事务的位点信息，每个新加的节点都能保证位点在已有节点之后；另外还维持了一个key->value的数组，数组下标即为事务binlog坐标计算的hash，值为相同hash值的链表
+// 这些操作都在锁LOCK_binlog_的保护下进行的,
+// 即使semisync退化成同步状态，也会继续更新位点（但不写事务节点），主要是为了监控后续SLAVE时候能够跟上当前的事务Bilog状态
 int ActiveTranx::insert_tranx_node(const char *log_file_name,
 				   my_off_t log_file_pos)
 {
@@ -356,7 +362,7 @@ int ActiveTranx::clear_active_tranx_nodes(const char *log_file_name,
   return function_exit(kWho, 0);
 }
 
-
+// flyyear 从库发送给master ack回包后，执行此函数
 int ReplSemiSyncMaster::reportReplyPacket(uint32 server_id, const uchar *packet,
                              ulong packet_len)
 {
@@ -628,6 +634,7 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
   function_enter(kWho);
   mysql_mutex_assert_owner(&LOCK_binlog_);
 
+  // flyyear 检查主库是否开启semisync
   if (!getMasterEnabled())
     goto l_end;
 
@@ -654,6 +661,9 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
      * can find the situation after the waiting timeout.  After that, some
      * slaves should catch up quickly.
      */
+    // flyyear
+    // 把dump线程接收到备库反馈的位置点信息与reply_file_name_，reply_file_pos_做对比，
+    // 如果小于后者，说明已有别的备库读到更新的事务了，这时候无需更新（reply_file_name_，reply_file_pos_）
     if (cmp < 0)
     {
       /* If the position is behind, do not copy it. */
@@ -673,11 +683,14 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
                             log_file_name, (unsigned long)log_file_pos);
   }
 
+  // flyyear 若当前等待开启semisync的备库>0
   if (rpl_semi_sync_master_wait_sessions > 0)
   {
     /* Let us check if some of the waiting threads doing a trx
      * commit can now proceed.
      */
+      // flyyear 若当前reply_file_name_和reply_file_pos_大于wait_file_name_,
+      // wait_file_pos_，即接收到的备库反馈点信息大于等于当前等待的事务的最小位点
     cmp = ActiveTranx::compare(reply_file_name_, reply_file_pos_,
                                wait_file_name_, wait_file_pos_);
     if (cmp >= 0)
@@ -685,13 +698,16 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
       /* Yes, at least one waiting thread can now proceed:
        * let us release all waiting threads with a broadcast
        */
+        // flyyear 唤醒等待的用户线程
       can_release_threads = true;
+      // flyyear 意味着新的等待事务，需要重新设置等待位点信息
       wait_file_name_inited_ = false;
     }
   }
 
  l_end:
 
+  // flyyear 下面释放等待的用户线程
   if (can_release_threads)
   {
     if (trace_level_ & kTraceDetail)
@@ -702,6 +718,9 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
   function_exit(kWho, 0);
 }
 
+// flyyear 半同步复制, 参数一个是binlog文件，一个是binlog文件的偏移
+// 等待binlog-dump线程返回已经同步到该位置的报告，如果还没有同步到该位置，则继续等待，
+// 直到超时返回
 int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
 				  my_off_t trx_wait_binlog_pos)
 {
@@ -716,6 +735,8 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
     DEBUG_SYNC(current_thd, "rpl_semisync_master_commit_trx_before_lock");
 #endif
   /* Acquire the mutex. */
+  // flyyear 自旋锁 如果没有获得锁，就一直在这面等待
+  // 从lock到后面的unlock这面代码都是线程串行的，表明该段代码效率影响了整个mysql写事务的吞吐量
   lock();
 
   TranxNode* entry= NULL;
@@ -730,6 +751,8 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
       thd_cond= &entry->cond;
   }
   /* This must be called after acquired the lock */
+  // flyyear 进入信号量，为后面的发起信号量的等待动作做准备，每个正在进行
+  // 提交的事务都对应一个初始化的thd_cond
   THD_ENTER_COND(NULL, thd_cond, &LOCK_binlog_,
                  & stage_waiting_for_semi_sync_ack_from_slave,
                  & old_stage);
@@ -753,6 +776,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
     }
 
     /* Calcuate the waiting period. */
+    // flyyear 计算最大的等待时间
 #ifndef HAVE_STRUCT_TIMESPEC
       abstime.tv.i64 = start_ts.tv.i64 + (__int64)wait_timeout_ * TIME_THOUSAND * 10;
       abstime.max_timeout_msec= (long)wait_timeout_;
@@ -767,10 +791,17 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
       }
 #endif /* _WIN32 */
 
+      // flyyear is_on()表示半同步是否OK
+      // 退出while循环有两种方式：
+      // 1. 半同步退化
+      // 2. 务的binlog已经同步到从库
     while (is_on())
     {
       if (reply_file_name_inited_)
       {
+          // flyyear
+          // 比较事务涉及的binlog位置（即commitTrx函数的参数）跟replay的
+          // 位置比较，如果>0说明此时的事务的binlog已经同步到从库，之后直接跳出循环
         int cmp = ActiveTranx::compare(reply_file_name_, reply_file_pos_,
                                        trx_wait_binlog_name, trx_wait_binlog_pos);
         if (cmp >= 0)
@@ -807,28 +838,37 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
       /* Let us update the info about the minimum binlog position of waiting
        * threads.
        */
+      // flyyear wait_file_name_inited_变量用来标识等待最小的位置
+      // 换句话说就是标记等待binlog文件信息的结构体有没有初始化
       if (wait_file_name_inited_)
       {
+          // flyyear
+          // 比较事务所涉及的日志的位置跟当前登记的等待位置进行比较，如果事务的binlog
+          // 位置比当前登记的等待位置wait_file_pos_要小，则表明需要调整当前登记的等待位置
         int cmp = ActiveTranx::compare(trx_wait_binlog_name, trx_wait_binlog_pos,
                                        wait_file_name_, wait_file_pos_);
         if (cmp <= 0)
-	{
+	    {
           /* This thd has a lower position, let's update the minimum info. */
           strncpy(wait_file_name_, trx_wait_binlog_name, sizeof(wait_file_name_) - 1);
           wait_file_name_[sizeof(wait_file_name_) - 1]= '\0';
           wait_file_pos_ = trx_wait_binlog_pos;
 
+          // flyyear 该变量的含义是表示登记的位置小于传入的binlog位置
+          // 登记位置向后调整的次数
           rpl_semi_sync_master_wait_pos_backtraverse++;
           if (trace_level_ & kTraceDetail)
             sql_print_information("%s: move back wait position (%s, %lu),",
                                   kWho, wait_file_name_, (unsigned long)wait_file_pos_);
         }
       }
+      // flyyear 这面初始化登记等待binlog信息结构体
       else
       {
         strncpy(wait_file_name_, trx_wait_binlog_name, sizeof(wait_file_name_) - 1);
         wait_file_name_[sizeof(wait_file_name_) - 1]= '\0';
         wait_file_pos_ = trx_wait_binlog_pos;
+        // flyyear 这面将此变量设置为true，标记等待binlog信息结构体已经初始化
         wait_file_name_inited_ = true;
 
         if (trace_level_ & kTraceDetail)
@@ -853,6 +893,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         break;
       }
 
+      // flyyear 表明有多少个要提交事务的线程在等待
       rpl_semi_sync_master_wait_sessions++;
       
       if (trace_level_ & kTraceDetail)
@@ -860,6 +901,9 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
                               kWho, wait_timeout_,
                               wait_file_name_, (unsigned long)wait_file_pos_);
       
+      // flyyear 进入信号等待，两种情况下推出等待
+      // 1. 被其他线程唤醒（即被binlog dump线程唤醒）
+      // 2. 等待时间超时
       /* wait for the position to be ACK'ed back */
       assert(entry);
       entry->n_waiters++;
@@ -872,9 +916,11 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         Hence check the value before decrementing it and decrement it only if it is
         non-zero value.
       */
+      // flyyear 等待的个数减一
       if (rpl_semi_sync_master_wait_sessions > 0)
         rpl_semi_sync_master_wait_sessions--;
       
+      // flyyear 下面是等待时间超时
       if (wait_result != 0)
       {
         /* This is a real wait timeout. */
@@ -885,6 +931,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         rpl_semi_sync_master_wait_timeouts++;
         
         /* switch semi-sync off */
+        // flyyear 关闭半同步复制
         switch_off();
       }
       else
@@ -894,6 +941,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         wait_time = getWaitTime(start_ts);
         if (wait_time < 0)
         {
+            // flyyear 这面表明始终错误，有可能做了时钟调整
           if (trace_level_ & kTraceGeneral)
           {
             sql_print_information("Assessment of waiting time for commitTrx "
@@ -905,6 +953,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         }
         else
         {
+            // flyyear 将等待时间和等待次数计入总数
           rpl_semi_sync_master_trx_wait_num++;
           rpl_semi_sync_master_trx_wait_time += wait_time;
         }
@@ -926,6 +975,7 @@ l_end:
     active_tranxs_->clear_active_tranx_nodes(trx_wait_binlog_name,
                                              trx_wait_binlog_pos);
 
+  // flyyear 释放锁和释放信号量
   unlock();
   THD_EXIT_COND(NULL, & old_stage);
   return function_exit(kWho, 0);
@@ -1193,6 +1243,7 @@ int ReplSemiSyncMaster::writeTranxInBinlog(const char* log_file_name,
   if (is_on())
   {
     assert(active_tranxs_ != NULL);
+    // flyyear 将该事务的位点信息存储到active_tranxs中
     if(active_tranxs_->insert_tranx_node(log_file_name, log_file_pos))
     {
       /*

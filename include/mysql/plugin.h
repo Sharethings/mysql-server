@@ -85,6 +85,8 @@ typedef struct st_mysql_xid MYSQL_XID;
 /*
   The allowable types of plugins
 */
+// flyyear mysql允许的插件的类型
+// 开发者开发的插件必须指定上述类型之一。
 #define MYSQL_UDF_PLUGIN             0  /* User-defined function        */
 #define MYSQL_STORAGE_ENGINE_PLUGIN  1  /* Storage Engine               */
 #define MYSQL_FTPARSER_PLUGIN        2  /* Full-text parser plugin      */
@@ -126,6 +128,7 @@ MYSQL_PLUGIN_EXPORT int _mysql_sizeof_struct_st_plugin_= sizeof(struct st_mysql_
 MYSQL_PLUGIN_EXPORT struct st_mysql_plugin _mysql_plugin_declarations_[]= {
 #endif
 
+// flyyear 这面是使用插件接口
 #define mysql_declare_plugin(NAME) \
 __MYSQL_DECLARE_PLUGIN(NAME, \
                  builtin_ ## NAME ## _plugin_interface_version, \
