@@ -189,6 +189,7 @@ public:
     Protected with internal locks.
     Must get data_lock when resetting the logs.
   */
+  // flyyear relaylog 就是binlog
   MYSQL_BIN_LOG relay_log;
   LOG_INFO linfo;
 

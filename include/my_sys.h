@@ -352,6 +352,7 @@ typedef struct st_io_cache_share
   int                   error;           /* Last error. */
 } IO_CACHE_SHARE;
 
+// flyyear 用于缓存文件,binlog或者relaylog
 typedef struct st_io_cache		/* Used when cacheing files */
 {
   /* Offset in file corresponding to the first byte of uchar* buffer. */

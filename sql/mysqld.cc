@@ -4523,6 +4523,8 @@ int mysqld_main(int argc, char **argv)
     /*
       init_slave() must be called after the thread keys are created.
     */
+    // flyyear 初始化从库的相关信息
+    // 因为server_id为0，意思是不允许从库的连接,也不允许作为任何db的从库
     if (server_id != 0)
       init_slave(); /* Ignoring errors while configuring replication. */
   }

@@ -89,6 +89,7 @@ int my_thread_create(my_thread_handle *thread, const my_thread_attr_t *attr,
                      my_start_routine func, void *arg)
 {
 #ifndef _WIN32
+    // flyyear linux平台直接调用系统函数pthread_create创建线程
   return pthread_create(&thread->thread, attr, func, arg);
 #else
   struct thread_start_parameter *par;

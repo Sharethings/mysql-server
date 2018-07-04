@@ -109,6 +109,7 @@ struct st_mysql_options_extention {
   unsigned int ssl_mode;
 };
 
+// flyyear 用到的一些函数，通过函数指针的方式放在结构体里面
 typedef struct st_mysql_methods
 {
   my_bool (*read_query_result)(MYSQL *mysql);

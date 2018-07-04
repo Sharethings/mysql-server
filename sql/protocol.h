@@ -75,9 +75,9 @@ public:
       Before adding a new type, please make sure
       there is enough storage for it in Query_cache_query_flags.
     */
-    PROTOCOL_TEXT= 0,            // text Protocol type used mostly
+    PROTOCOL_TEXT= 0,            // text Protocol type used mostly // 普通协议
                                  // for the old (MySQL 4.0 protocol)
-    PROTOCOL_BINARY= 1,          // binary protocol type
+    PROTOCOL_BINARY= 1,          // binary protocol type //flyyear 二进制协议
     PROTOCOL_LOCAL= 2,           // local protocol type(intercepts communication)
     PROTOCOL_ERROR = 3,          // error protocol instance
     PROTOCOL_PLUGIN = 4          // pluggable protocol type

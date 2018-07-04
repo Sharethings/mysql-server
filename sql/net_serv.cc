@@ -276,6 +276,7 @@ net_should_retry(NET *net, uint *retry_count MY_ATTRIBUTE((unused)))
   @note If compression is used, the original packet is modified!
 */
 
+// flyyear 向客户端或者服务器写数据
 my_bool my_net_write(NET *net, const uchar *packet, size_t len)
 {
   uchar buff[NET_HEADER_SIZE];
@@ -297,6 +298,9 @@ my_bool my_net_write(NET *net, const uchar *packet, size_t len)
     length. The last packet is always a packet that is < MAX_PACKET_LENGTH.
     (The last packet may even have a length of 0)
   */
+  // flyyear 这面会把比较大的包给分割成一个一个的小包
+  // 最后一个包的长度肯定是小于最大包长限制的2^32-1
+  // 最后的一个包有可能长度是0的
   while (len >= MAX_PACKET_LENGTH)
   {
     const ulong z_size = MAX_PACKET_LENGTH;

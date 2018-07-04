@@ -680,7 +680,6 @@ extern st_plugin_int *hton2plugin[MAX_HA];
 // flyyear Mysql与存储引擎之间的接口主要是由此文件里面的class handler和struct handlerton
 // 上面两个的主要区别是：struct handlerton定义了事务操作接口；
 // class handler 定义了表、索引以及记录操作接口
-//
 class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
@@ -698,6 +697,7 @@ class handler;
 // 是一个单例的结构体，每一个存储引擎只有一个该结构，提供了会影响整个存储引擎的接口，
 // 负责存储引擎的初始化，事务相关的操作等
 // 如commit（）、show_status（）等，大约30多种
+// 通过函数指针来定义这些接口
 struct handlerton
 {
   /*

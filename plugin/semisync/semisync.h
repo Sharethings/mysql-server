@@ -35,6 +35,7 @@ typedef struct st_mysql_sys_var SYS_VAR;
    This class is used to trace function calls and other process
    information
 */
+// flyyear 用户跟踪函数调用 和其他进程信息
 class Trace {
 public:
   static const unsigned long kTraceFunction;

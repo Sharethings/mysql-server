@@ -31,13 +31,6 @@
 #define __STDC_FORMAT_MACROS	/* Enable C99 printf format macros */
 #define _USE_MATH_DEFINES       /* Get access to M_PI, M_E, etc. in math.h */
 
-#ifdef _WIN32
-/* Include common headers.*/
-# include <winsock2.h>
-# include <ws2tcpip.h> /* SOCKET */
-# include <io.h>       /* access(), chmod() */
-#endif
-
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -100,6 +93,7 @@
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 
 /* Make it easier to add conditional code in _expressions_ */
+// flyyear 原来的意思是不同的平台使用同一个名字，但是返回不同的值
 #ifdef _WIN32
 #define IF_WIN(A,B) A
 #else
@@ -152,6 +146,11 @@ static inline void sleep(unsigned long seconds)
   @param  type    Type of the structure that contains the member.
   @param  member  Name of the member within the structure.
 */
+// flyyear 根据结构体里面某个成员的指针，找到结构体的位置
+// linux kernel 经典实现
+// #define container_of(ptr, type, member) ({                      \
+//         const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+//                 (type *)( (char *)__mptr - offsetof(type,member) );})}
 #define my_container_of(ptr, type, member)              \
   ((type *)((char *)ptr - offsetof(type, member)))
 
@@ -214,14 +213,7 @@ C_MODE_START
 typedef int	(*qsort_cmp)(const void *,const void *);
 typedef int	(*qsort_cmp2)(const void*, const void *,const void *);
 C_MODE_END
-#ifdef _WIN32
-typedef int       socket_len_t;
-typedef int       sigset_t;
-typedef int       mode_t;
-typedef SSIZE_T   ssize_t;
-#else
 typedef socklen_t socket_len_t;
-#endif
 typedef socket_len_t SOCKET_SIZE_TYPE; /* Used by NDB */
 
 /* file create flags */
@@ -465,6 +457,8 @@ typedef long long	my_ptrdiff_t;
   and related routines are refactored.
 */
 
+// flyyear linux kernel 经典的offset
+// #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)))
 #define my_offsetof(TYPE, MEMBER) \
         ((size_t)((char *)&(((TYPE *)0x10)->MEMBER) - (char*)0x10))
 
@@ -654,25 +648,6 @@ enum loglevel {
    INFORMATION_LEVEL= 2
 };
 
-
-#ifdef _WIN32
-/****************************************************************************
-** Replacements for localtime_r and gmtime_r
-****************************************************************************/
-
-static inline struct tm *localtime_r(const time_t *timep, struct tm *tmp)
-{
-  localtime_s(tmp, timep);
-  return tmp;
-}
-
-static inline struct tm *gmtime_r(const time_t *clock, struct tm *res)
-{
-  gmtime_s(res, clock);
-  return res;
-}
-#endif /* _WIN32 */
-
 #ifndef HAVE_STRUCT_TIMESPEC /* Windows before VS2015 */
 /*
   Declare a union to make sure FILETIME is properly aligned
@@ -760,11 +735,7 @@ static inline ulonglong diff_timespec(struct timespec *ts1, struct timespec *ts2
 #endif
 }
 
-#ifdef _WIN32
-typedef int MY_MODE;
-#else
 typedef mode_t MY_MODE;
-#endif /* _WIN32 */
 
 /* File permissions */
 #define USER_READ       (1L << 0)
@@ -786,7 +757,4 @@ typedef mode_t MY_MODE;
 #define DEFAULT_SSL_SERVER_CERT "server-cert.pem"
 #define DEFAULT_SSL_SERVER_KEY  "server-key.pem"
 
-#if defined(_WIN32) || defined(_WIN64)
-  #define strcasecmp _stricmp
-#endif
 #endif  // MY_GLOBAL_INCLUDED

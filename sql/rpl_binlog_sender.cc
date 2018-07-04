@@ -190,7 +190,8 @@ void Binlog_sender::cleanup()
   DBUG_VOID_RETURN;
 }
 
-// flyyear 这面发送binlog event给客户端
+// flyyear rpl_master里面调用
+// 这面发送binlog event给客户端
 void Binlog_sender::run()
 {
   DBUG_ENTER("Binlog_sender::run");
@@ -201,6 +202,7 @@ void Binlog_sender::run()
   bool is_index_file_reopened_on_binlog_disable= false;
   init();
 
+  // flyyear while循环发送binlog，直到线程被干掉或者错误
   while (!has_error() && !m_thd->killed)
   {
     /*
@@ -224,6 +226,7 @@ void Binlog_sender::run()
     }
 
     THD_STAGE_INFO(m_thd, stage_sending_binlog_event_to_slave);
+    // flyyear 这面开始发送binlog
     if (send_binlog(&log_cache, start_pos))
       break;
 
@@ -314,6 +317,7 @@ void Binlog_sender::run()
   DBUG_VOID_RETURN;
 }
 
+// flyyear 发送binlog
 my_off_t Binlog_sender::send_binlog(IO_CACHE *log_cache, my_off_t start_pos)
 {
   if (unlikely(send_format_description_event(log_cache, start_pos)))
@@ -336,17 +340,22 @@ my_off_t Binlog_sender::send_binlog(IO_CACHE *log_cache, my_off_t start_pos)
     Slave is requesting a position which is in the middle of a file,
     so seek to the correct position.
   */
+  // flyyear 从binlog文件中找到对应的位置点信息
   if (my_b_tell(log_cache) != start_pos)
     my_b_seek(log_cache, start_pos);
 
+  // flyyear while循环，直到线程被kill掉
   while (!m_thd->killed)
   {
     my_off_t end_pos;
 
+    // flyyear 得到binlog的最后的位置点
     end_pos= get_binlog_end_pos(log_cache);
     if (end_pos <= 1)
       return end_pos;
 
+    // flyyear  上面如果拿到了binlog的最后位置点，说明有binlog写入，
+    // dump线程以event为单位发送binlog
     if (send_events(log_cache, end_pos))
       return 1;
 
@@ -369,6 +378,7 @@ inline my_off_t Binlog_sender::get_binlog_end_pos(IO_CACHE *log_cache)
   my_off_t log_pos= my_b_tell(log_cache);
   my_off_t end_pos= 0;
 
+  // flyyear 下面是一个do while循环一直等待binlog的更新
   do
   {
     mysql_bin_log.lock_binlog_end_pos();
@@ -388,6 +398,7 @@ inline my_off_t Binlog_sender::get_binlog_end_pos(IO_CACHE *log_cache)
                         m_linfo.log_file_name, log_pos, end_pos));
     DBUG_PRINT("info", ("Active file is %s", mysql_bin_log.get_log_fname()));
 
+    // flyyear 如果得到的日志最后的位置大于原来的log_pos,说明位置更新成功，返回
     if (log_pos < end_pos)
       DBUG_RETURN(end_pos);
 
@@ -402,6 +413,7 @@ inline my_off_t Binlog_sender::get_binlog_end_pos(IO_CACHE *log_cache)
   DBUG_RETURN(1);
 }
 
+// flyyear 发送binlog事件函数
 int Binlog_sender::send_events(IO_CACHE *log_cache, my_off_t end_pos)
 {
   DBUG_ENTER("Binlog_sender::send_events");
@@ -673,6 +685,7 @@ inline int Binlog_sender::wait_with_heartbeat(my_off_t log_pos)
 
 inline int Binlog_sender::wait_without_heartbeat()
 {
+    // flyyear 这面调用函数来等待binlog的更新
   return mysql_bin_log.wait_for_update_bin_log(m_thd, NULL);
 }
 
@@ -738,6 +751,7 @@ int Binlog_sender::check_start_file()
     }
     gtid_state->get_owned_gtids()->get_gtids(gtid_executed_and_owned);
 
+    // flyyear 判断slave的gtid_set是否是Master的一个子集
     if (!m_exclude_gtid->is_subset_for_sid(&gtid_executed_and_owned,
                                            gtid_state->get_server_sidno(),
                                            subset_sidno))
@@ -773,6 +787,7 @@ int Binlog_sender::check_start_file()
       will not find one and an error ER_MASTER_HAS_PURGED_REQUIRED_GTIDS
       is thrown from there.
     */
+    // flyyear 这面判断slave将要请求的binlog数据，是否被删除
     if (!gtid_state->get_lost_gtids()->is_subset(m_exclude_gtid))
     {
       errmsg= ER(ER_MASTER_HAS_PURGED_REQUIRED_GTIDS);

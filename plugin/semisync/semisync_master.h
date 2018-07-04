@@ -605,9 +605,11 @@ class ReplSemiSyncMaster
   bool            reply_file_name_inited_;
 
   /* The binlog name up to which we have received replies from any slaves. */
+  // flyyear 记录从库确认的收到的binlog文件
   char            reply_file_name_[FN_REFLEN];
 
   /* The position in that file up to which we have the reply from any slaves. */
+  // flyyear 记录从库确认收到的binlog的位置
   my_off_t        reply_file_pos_;
 
   /* This is set to true when we know the 'smallest' wait position. */
@@ -846,11 +848,12 @@ public:
     @param[in] log_file_name  binlog file name of the ack
     @param[in] log_file_pos   binlog file position of the ack
   */
-  // flyyear 处理从库的ack回包
+  // flyyear 处理从库的ack回包, 参数是回包中的binlog文件及其位置
   void handleAck(int server_id, const char *log_file_name,
                  my_off_t log_file_pos)
   {
     lock();
+    // flyyear 如果主库只需要等待一个从库回包
     if (rpl_semi_sync_master_wait_for_slave_count == 1)
       reportReplyBinlog(log_file_name, log_file_pos);
     else

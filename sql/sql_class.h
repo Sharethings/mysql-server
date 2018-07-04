@@ -1432,6 +1432,7 @@ class Modification_plan;
   For each client connection we create a separate thread with THD serving as
   a thread/connection descriptor
 */
+// flyyear 每一个客户端的连接都会新建一个包含THD的线程，THD用于线程或者连接描述
 
 class THD :public MDL_context_owner,
            public Query_arena,

@@ -38,6 +38,7 @@ class THD;
    By inheriting from this class, the class is imbued with
    capabilities to do slave reporting.
  */
+// flyyear Rpl_info的基类，保存了一些错误信息，如IO/SQL thread last error
 class Slave_reporting_capability
 {
 public:
@@ -131,6 +132,7 @@ public:
 
   };
 
+  // flyyear 获取last error
   Error const& last_error() const { return m_last_error; }
   bool is_error() const { return last_error().number != 0; }
 

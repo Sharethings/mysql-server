@@ -29,6 +29,8 @@ extern PSI_thread_key key_ss_thread_Ack_receiver_thread;
 #endif
 
 /* Callback function of ack receive thread */
+// flyyear ack receive 线程的回调函数
+// 这面的传入的参数，就是调用的时候的this
 extern "C" void *ack_receive_handler(void *arg)
 {
   my_thread_init();
@@ -264,7 +266,7 @@ void Ack_receiver::run()
     i= 0;
     while (i < m_slaves.size())
     {
-        // flyyear 找到回包的那个
+        // flyyear 一个一个遍历，找到回包的那个
       if (listener.is_socket_active(i))
       {
         ulong len;

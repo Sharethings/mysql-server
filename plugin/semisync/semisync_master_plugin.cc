@@ -21,6 +21,7 @@
 
 ReplSemiSyncMaster repl_semisync;
 // flyyear 这面定义一个全局变量Ack_receiver
+// 这样每个mysql主库通过这个变量来控制从库线程的relay确认
 Ack_receiver ack_receiver;
 
 /* The places at where semisync waits for binlog ACKs. */
@@ -74,6 +75,7 @@ int repl_semi_report_binlog_sync(Binlog_storage_param *param,
                                  my_off_t log_pos)
 {
   if (rpl_semi_sync_master_wait_point == WAIT_AFTER_SYNC)
+      // flyyear 调用semisync_master.cc文件中的函数进行等待
     return repl_semisync.commitTrx(log_file, log_pos);
   return 0;
 }
@@ -208,6 +210,7 @@ int repl_semi_before_send_event(Binlog_transmit_param *param,
 					param->server_id);
 }
 
+// flyyear 发送binlog后，执行
 int repl_semi_after_send_event(Binlog_transmit_param *param,
                                const char *event_buf, unsigned long len,
                                const char * skipped_log_file,

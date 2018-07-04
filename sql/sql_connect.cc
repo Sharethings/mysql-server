@@ -803,6 +803,7 @@ void end_connection(THD *thd)
   Initialize THD to handle queries
 */
 
+// flyyear 初始化线程去处理查询
 static void prepare_new_connection_state(THD* thd)
 {
   NET *net= thd->get_protocol_classic()->get_net();
@@ -886,6 +887,7 @@ bool thd_prepare_connection(THD *thd)
                          (char *) &thd->security_context()->priv_user().str[0],
                          (char *) thd->security_context()->host_or_ip().str);
 
+  // flyyear 预备新的连接给查询使用
   prepare_new_connection_state(thd);
   return FALSE;
 }
@@ -928,7 +930,7 @@ void close_connection(THD *thd, uint sql_errno,
   DBUG_VOID_RETURN;
 }
 
-
+// flyyear 检查线程的存活性
 bool thd_connection_alive(THD *thd)
 {
   NET *net= thd->get_protocol_classic()->get_net();

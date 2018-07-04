@@ -93,6 +93,7 @@ public:
   /**
     Retrieves singleton instance
   */
+  // flyyear 单例模式
   static Global_THD_manager* get_instance()
   {
     DBUG_ASSERT(thd_manager != NULL);

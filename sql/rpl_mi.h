@@ -61,6 +61,18 @@ class Rpl_info_factory;
   To clean up, call end_info()
 
 *****************************************************************************/
+/*
+ *   Master_info 用户 IO thread
+ *     主要保存以下信息：
+ *          连接到Master的用户信息
+ *          当前 master log name
+ *          当前 master log offset
+ *          一些其他控制变量
+    Master_info 读取 master.info repository
+        初始化，通常是表或文件
+ *  通过函数 mi_init_info() 进行初始化
+ *  调用 flush_info() 可以将 master.info写入磁盘，每次从master读取数据都需要刷盘
+ */
 
 class Master_info : public Rpl_info
 {
@@ -245,7 +257,10 @@ public:
   char ssl_cipher[FN_REFLEN], ssl_key[FN_REFLEN], tls_version[FN_REFLEN];
   char ssl_crl[FN_REFLEN], ssl_crlpath[FN_REFLEN];
   my_bool ssl_verify_server_cert;
-
+/* 前面保存了user、host等连接信息
+ * 下面是连接信息的set/get函数
+ * master的连接
+ **/
   MYSQL* mysql;
   uint32 file_id;				/* for 3.23 load data infile */
   Relay_log_info *rli;

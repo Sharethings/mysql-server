@@ -164,7 +164,7 @@ typedef struct Trans_param {
 /**
    Observes and extends transaction execution
 */
-// flyyear 事务观察者，在事务提交或回滚时候回掉
+// flyyear 事务观察者，在事务提交或回滚时候回调
 typedef struct Trans_observer {
   uint32 len;
 

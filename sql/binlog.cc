@@ -69,12 +69,14 @@ static ulonglong limit_unsafe_suppression_start_time= 0;
 static bool unsafe_warning_suppression_is_activated= false;
 static int limit_unsafe_warning_count= 0;
 
+// 定义一个全局变量来
 static handlerton *binlog_hton;
 bool opt_binlog_order_commits= true;
 
 const char *log_bin_index= 0;
 const char *log_bin_basename= 0;
 
+// flyyear 定义一个全局变量mysql_bin_log
 MYSQL_BIN_LOG mysql_bin_log(&sync_binlog_period, WRITE_CACHE);
 
 static int binlog_init(void *p);
@@ -2719,7 +2721,7 @@ int check_binlog_magic(IO_CACHE* log, const char** errmsg)
   return 0;
 }
 
-
+// flyyear 看到这面open_file
 File open_binlog_file(IO_CACHE *log, const char *log_file_name, const char **errmsg)
 {
   File file;
@@ -6897,6 +6899,7 @@ end:
   @retval false success
   @retval true error
 */
+// flyyear 将relaylog刷盘
 bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::after_append_to_relay_log");
@@ -6912,6 +6915,7 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
     We allow the relay log rotation by relay log size
     only if the trx parser is not inside a transaction.
   */
+  // flyyear ralaylog超过了限制，但是如果在同一个事务里面不能将部分event放到下一个relaylog里面
   bool can_rotate= mi->transaction_parser.is_not_inside_transaction();
 
 #ifndef DBUG_OFF
@@ -6991,6 +6995,7 @@ bool MYSQL_BIN_LOG::append_event(Log_event* ev, Master_info *mi)
 }
 
 
+// flyyear 这面写日志到relaylog
 bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::append_buffer");
@@ -7002,9 +7007,11 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 
   // write data
   bool error= false;
+  // flyyear 这面写入到ralaylog buff里面
   if (my_b_append(&log_file,(uchar*) buf,len) == 0)
   {
     bytes_written += len;
+    // flyyear 这面写入到relaylog文件里面
     error= after_append_to_relay_log(mi);
   }
   else
@@ -7887,12 +7894,15 @@ int MYSQL_BIN_LOG::wait_for_update_relay_log(THD* thd, const struct timespec *ti
     LOCK_log is released by the caller.
 */
 
+// flyyear 等待binlog的更新, 通过条件变量来进行通信
+// 仅仅适用于主库
 int MYSQL_BIN_LOG::wait_for_update_bin_log(THD* thd,
                                            const struct timespec *timeout)
 {
   int ret= 0;
   DBUG_ENTER("wait_for_update_bin_log");
-
+// flyyear timeout的用处是如果有值则会调用带timedwait的条件变量函数等待
+// 当有binlog更新时,会给条件变量发送信号，然后执行
   if (!timeout)
     mysql_cond_wait(&update_cond, &LOCK_binlog_end_pos);
   else
@@ -9474,6 +9484,7 @@ commit_stage:
       Gtid_set, and adding and removing intervals requires a mutex,
       which would reduce performance.
     */
+    // flyyear 进入提交函数
     process_commit_stage_queue(thd, commit_queue);
     mysql_mutex_unlock(&LOCK_commit);
     /*

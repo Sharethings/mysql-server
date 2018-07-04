@@ -755,6 +755,7 @@ inline int Log_event::do_apply_event_worker(Slave_worker *w)
                       DBUG_SUICIDE();
                     }
                   });
+  // flyyear 利用多态性执行对应的event
   return do_apply_event(w);
 }
 

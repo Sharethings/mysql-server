@@ -374,6 +374,7 @@ static void init_slave_psi_keys(void)
 
 /* Initialize slave structures */
 
+// flyyear 初始化从库的相关信息
 int init_slave()
 {
   DBUG_ENTER("init_slave");
@@ -2008,6 +2009,7 @@ bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
   }
 
   if (thread_mask & SLAVE_IO)
+      // flyyear 这面启动io线程
     is_error= start_slave_thread(
 #ifdef HAVE_PSI_INTERFACE
                                  key_thread_slave_io,
@@ -2017,6 +2019,7 @@ bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
                                  cond_io,
                                  &mi->slave_running, &mi->slave_run_id,
                                  mi);
+  // flyyear 如果上面io线程启动OK，下面启动sql线程
   if (!is_error && (thread_mask & SLAVE_SQL))
   {
     /*
@@ -2032,6 +2035,7 @@ bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
       }
     }
     if (!is_error)
+        // flyyear 启动slave线程
       is_error= start_slave_thread(
 #ifdef HAVE_PSI_INTERFACE
                                    key_thread_slave_sql,
@@ -4394,6 +4398,8 @@ static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
   }
   else
   {
+      // flyyear 这面通过COM_BINLOG_DUMP通过file和pos请求binlog
+      // 这面双冒号的用法是：全局作用域符号，当全局变量在局部函数中与其中某个变量重名，那么可以通过::来区分
     size_t allocation_size= ::BINLOG_POS_OLD_INFO_SIZE +
       BINLOG_NAME_INFO_SIZE + ::BINLOG_FLAGS_INFO_SIZE +
       ::BINLOG_SERVER_ID_INFO_SIZE + 1;
@@ -4457,7 +4463,7 @@ err:
     'packet_error'      Error
     number              Length of packet
 */
-
+// flyyear 这面读取从主库来的event
 static ulong read_event(MYSQL* mysql, Master_info *mi, bool* suppress_warnings)
 {
   ulong len;
@@ -5112,6 +5118,8 @@ static bool coord_handle_partial_binlogged_transaction(Relay_log_info *rli,
 
   @retval 1 The event was not applied.
 */
+// flyyear 函数在sql线程中被调用，从relaylog中读取event，执行，并且更新
+// relaylog的位置
 static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
 {
   DBUG_ENTER("exec_relay_log_event");
@@ -5828,7 +5836,7 @@ Stopping slave I/O thread due to out-of-memory error from master");
       /* XXX: 'synced' should be updated by queue_event to indicate
          whether event has been synced to disk */
       bool synced= 0;
-      // flyyear 将binlog写入到ralaylog
+      // flyyear 将读取到的event写入到ralaylog
       if (queue_event(mi, event_buf, event_len))
       {
         mi->report(ERROR_LEVEL, ER_SLAVE_RELAY_LOG_WRITE_FAILURE,
@@ -5836,6 +5844,7 @@ Stopping slave I/O thread due to out-of-memory error from master");
                    "could not queue event from master");
         goto err;
       }
+      // flyyear 向主库发送ack包, 所以从库是等待relaylog落盘后才发送ack包的
       if (RUN_HOOK(binlog_relay_io, after_queue_event,
                    (thd, mi, event_buf, event_len, synced)))
       {
@@ -6182,6 +6191,7 @@ extern "C" void *handle_slave_worker(void *arg)
   set_timespec_nsec(&w->ts_exec[1], 0);
   set_timespec_nsec(&w->stats_begin, 0);
 
+  // flyyear while循环里面执行event
   while (!error)
   {
     error= slave_worker_exec_job_group(w, rli);
@@ -6784,6 +6794,7 @@ end:
 
    @return 0 suppress or 1 if fails
 */
+// flyyear slave worker线程实例化 
 int slave_start_single_worker(Relay_log_info *rli, ulong i)
 {
   int error= 0;
@@ -7220,6 +7231,8 @@ extern "C" void *handle_slave_sql(void *arg)
   }
 
   /* MTS: starting the worker pool */
+  // flyyear fork worker线程，数量由参数slave_parallel_workers决定
+  // 用来并行回放relaylog
   if (slave_start_workers(rli, rli->opt_slave_parallel_workers, &mts_inited) != 0)
   {
     mysql_cond_broadcast(&rli->start_cond);
@@ -7382,6 +7395,7 @@ extern "C" void *handle_slave_sql(void *arg)
 
   /* Read queries from the IO/THREAD until this thread is killed */
 
+  // flyyear while循环,开始读取event
   while (!sql_slave_killed(thd,rli))
   {
     THD_STAGE_INFO(thd, stage_reading_event_from_the_relay_log);
@@ -7401,7 +7415,7 @@ extern "C" void *handle_slave_sql(void *arg)
         rli->get_group_master_log_name(), (ulong) rli->get_group_master_log_pos());
       saved_skip= 0;
     }
-    
+   // flyyear 每次调用处理一个日志event 
     if (exec_relay_log_event(thd,rli))
     {
       DBUG_PRINT("info", ("exec_relay_log_event() failed"));
@@ -8602,6 +8616,7 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
   {
     bool is_error= false;
     /* write the event to the relay log */
+    // flyyear 将event写入到relay log中,并且刷盘
     if (likely(rli->relay_log.append_buffer(buf, event_len, mi) == 0))
     {
       mi->set_master_log_pos(mi->get_master_log_pos() + inc_pos);
@@ -9843,6 +9858,7 @@ uint sql_slave_skip_counter;
    @retval false success
    @retval true error
 */
+// flyyear start slave语句执行
 bool start_slave(THD* thd,
                  LEX_SLAVE_CONNECTION* connection_param,
                  LEX_MASTER_INFO* master_param,

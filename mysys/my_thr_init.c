@@ -288,7 +288,7 @@ void my_thread_global_end()
   @retval FALSE  ok
   @retval TRUE   Fatal error; mysys/dbug functions can't be used
 */
-
+// flyyear 分配内存给线程
 my_bool my_thread_init()
 {
 #ifndef DBUG_OFF

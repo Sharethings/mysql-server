@@ -25,6 +25,7 @@
 
 #define  CHANNEL_NAME_LENGTH NAME_LEN
 
+// flyyear Master_info、Relay_log_info的基类，很多重要的锁和信号量都在这里
 class Rpl_info : public Slave_reporting_capability
 {
 public:
@@ -32,6 +33,7 @@ public:
 
   /*
     standard lock acquisition order to avoid deadlocks:
+    // flyyear 为了避免死锁需要按照以下顺序进行加锁
     run_lock, data_lock, relay_log.LOCK_log, relay_log.LOCK_index
     run_lock, sleep_lock
     run_lock, info_thd_lock
@@ -61,11 +63,23 @@ public:
                 *key_info_sleep_cond;
 #endif
 
+  // flyyear 关联io/sql/worker thread的thd
+  // master_info对应io thread
+  // Relay_log_info对应sql thread
+  // slave_worker对应worker thread
   THD *info_thd;
 
+  // flyyear 已初始化
   bool inited;
+  // flyyear 已终止slave
   volatile bool abort_slave;
+  // flyyear 当前slave运行状态 io thread 即mi->slave_running有三种状态
+  // MYSQL_SLAVE_NOT_RUN    0
+  // MYSQL_SLAVE_RUN_NOT_CONNECT    1
+  // MYSQL_SLAVE_RUN_CONNECT        2
+  // sql thread即mi->slave_running只有0 1两种状态
   volatile uint slave_running;
+  // flyyear 用户判断slave thread是否启动的变量，每次启动时递增1
   volatile ulong slave_run_id;
 
 #ifndef DBUG_OFF
@@ -172,12 +186,17 @@ protected:
            we keep this for Master_info and Relay_log_info.
            However, {id, channel} is still required for a worker info.
   */
+  /* flyyear
+   * 唯一标识一条info记录的id，标识一行或一个文件Master_info和Relay_log_info可以通过channel标识唯一Worker_info
+   * 需要通过{id, channel}标识唯一
+   * */
   uint internal_id;
 
   /**
      Every slave info object acts on a particular channel in Multisource
      Replication.
   */
+  // flyyear 通道名，多源复制使用
   char channel[CHANNEL_NAME_LENGTH+1];
 
   Rpl_info(const char* type
@@ -195,6 +214,7 @@ protected:
           );
 
 private:
+  // flyyear 实现了两个虚函数，读写Rpl_info
   virtual bool read_info(Rpl_info_handler *from)= 0;
   virtual bool write_info(Rpl_info_handler *to)= 0;
 

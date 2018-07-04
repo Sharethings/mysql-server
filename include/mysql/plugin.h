@@ -128,7 +128,7 @@ MYSQL_PLUGIN_EXPORT int _mysql_sizeof_struct_st_plugin_= sizeof(struct st_mysql_
 MYSQL_PLUGIN_EXPORT struct st_mysql_plugin _mysql_plugin_declarations_[]= {
 #endif
 
-// flyyear 这面是使用插件接口
+// flyyear 这面用宏定义了一个插件的接口
 #define mysql_declare_plugin(NAME) \
 __MYSQL_DECLARE_PLUGIN(NAME, \
                  builtin_ ## NAME ## _plugin_interface_version, \

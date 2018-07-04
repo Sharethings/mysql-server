@@ -1742,6 +1742,7 @@ static int64 get_sequence_number(Log_event *ev)
   @return 0 success
          -1 got killed or an error happened during appying
 */
+// flyyear 
 int Slave_worker::slave_worker_exec_event(Log_event *ev)
 {
   Relay_log_info *rli= c_rli;
@@ -1830,6 +1831,7 @@ int Slave_worker::slave_worker_exec_event(Log_event *ev)
   set_future_event_relay_log_pos(ev->future_event_relay_log_pos);
   set_master_log_pos(static_cast<ulong>(ev->common_header->log_pos));
   set_gaq_index(ev->mts_group_idx);
+  // flyyear 这面
   ret= ev->do_apply_event_worker(this);
   DBUG_RETURN(ret);
 }
@@ -2195,6 +2197,7 @@ Slave_job_item * de_queue(Slave_jobs_queue *jobs, Slave_job_item *ret)
            true  Thread killed or worker stopped while waiting for
                  successful enqueue.
 */
+// flyyear sql线程协调者将一个job加入到worker线程的私有队列里面
 bool append_item_to_jobs(slave_job_item *job_item,
                          Slave_worker *worker, Relay_log_info *rli)
 {
@@ -2427,6 +2430,7 @@ static void remove_item_from_jobs(slave_job_item *job_item,
    @return NULL failure or
            a-pointer to an item.
 */
+// flyyear worker线程定期等待 append_item_to_jobs分配的任务
 struct slave_job_item* pop_jobs_item(Slave_worker *worker,
                                      Slave_job_item *job_item)
 {
@@ -2553,10 +2557,12 @@ int slave_worker_exec_job_group(Slave_worker *worker, Relay_log_info *rli)
   if (unlikely(worker->trans_retries > 0))
     worker->trans_retries= 0;
 
+  // flyyear 获取具体的event(ev)，会阻塞等待==<<<==
   job_item= pop_jobs_item(worker, job_item);
   start_relay_number= job_item->relay_number;
   start_relay_pos= job_item->relay_pos;
 
+  // flyyear 一直循环执行，处理event
   while (1)
   {
     Slave_job_group *ptr_g;
@@ -2591,6 +2597,7 @@ int slave_worker_exec_job_group(Slave_worker *worker, Relay_log_info *rli)
       ptr_g->new_fd_event= NULL;
     }
 
+    // flyyear 执行event
     error= worker->slave_worker_exec_event(ev);
 
     set_timespec_nsec(&worker->ts_exec[1], 0); // pre-exec
@@ -2627,7 +2634,7 @@ int slave_worker_exec_job_group(Slave_worker *worker, Relay_log_info *rli)
     /* The event will be used later if worker is NULL, so it is not freed */
     if (ev->worker != NULL)
       delete ev;
-
+    // flyyear 获取具体的event（ev），会阻塞等待
     job_item= pop_jobs_item(worker, job_item);
   }
 

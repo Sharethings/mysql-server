@@ -16,6 +16,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
+// flyyear 这面使用条件变量来进行进程间通信
 /**
   MySQL condition variable implementation.
 

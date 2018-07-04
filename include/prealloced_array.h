@@ -74,6 +74,7 @@ public:
   typedef Element_type *iterator;
   typedef const Element_type *const_iterator;
 
+  // flyyer explicit用于指定此构造函数为默认构造函数
   explicit Prealloced_array(PSI_memory_key psi_key)
     : m_size(0), m_capacity(Prealloc), m_array_ptr(cast_rawbuff()),
       m_psi_key(psi_key)

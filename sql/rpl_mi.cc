@@ -280,6 +280,7 @@ void Master_info::set_relay_log_info(Relay_log_info* info)
   Creates or reads information from the repository, initializing the
   Master_info.
 */
+// flyyear  从文件Master.info或者命令参数里面初始话Master_info
 int Master_info::mi_init_info()
 {
   DBUG_ENTER("Master_info::mi_init_info");

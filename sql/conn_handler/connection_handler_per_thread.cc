@@ -237,6 +237,8 @@ static THD* init_new_thd(Channel_info *channel_info)
 // 用户验证
 // sql执行
 // 关闭连接 结束线程
+// 这面新建一个线程，然后执行客户端发送过来的命令
+// 如果客户端发送过来的是COM_BINLOG_DUMP那么这个线程也就是dump线程
 extern "C" void *handle_connection(void *arg)
 {
   Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
@@ -303,6 +305,7 @@ extern "C" void *handle_connection(void *arg)
       handler_manager->inc_aborted_connects();
     else
     {
+        // flyyear 这面循环一直执行命令
       while (thd_connection_alive(thd))
       {
           // flyyear 这面开始处理命令
@@ -410,7 +413,7 @@ bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
     There are no idle threads avaliable to take up the new
     connection. Create a new thread to handle the connection
   */
-  // flyyear 新建连接的线程，设置新建时间
+  // flyyear 新建连接的线程，设置线程创建的时间
   channel_info->set_prior_thr_create_utime();
   // flyyear 此处有个参数handle_connection是在线程创建时注册要处理的函数handle_connection
   error= mysql_thread_create(key_thread_one_connection, &id,

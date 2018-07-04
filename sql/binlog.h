@@ -46,6 +46,12 @@ typedef int64 query_id_t;
   The class provides necessary interfaces including that of
   generating a next consecutive value for the latter.
 */
+// flyyear mysql5.7添加了从库并行重放relaylog
+// LOGICAL_CLOCK基于组提交的并行复制方式
+// slave_parallel_type 值为：DATABASE、LOGICAL_CLOCK
+// slave_parallel_workers值设置为0，则退化为单线程回放，
+// 但是若设置为1，则sql线程功能转化为coordinator线程但是只有1个worker线程进行回放，也是单线程复制。然而，这两种性能却又有一些的区别，因为多了一次coordinator线程的转发，因此slave_parallel_workers=1的性能反而比0还要差，有20%左右的性能下降。
+// 事务添加了两个参数：last_committed 和 sequence_number
 class  Logical_clock
 {
 private:
@@ -352,6 +358,7 @@ typedef struct st_log_info
   (mmap+fsync is two times faster than write+fsync)
 */
 
+// flyyear 使用二进制日志进行事务的协调
 class MYSQL_BIN_LOG: public TC_LOG
 {
   enum enum_log_state { LOG_OPENED, LOG_CLOSED, LOG_TO_BE_OPENED };
@@ -750,6 +757,7 @@ public:
   {
     DBUG_ENTER("MYSQL_BIN_LOG::signal_update");
     signal_cnt++;
+    // flyyear 对条件变量进行广播，等待在这个条件变量上的都会被唤醒
     mysql_cond_broadcast(&update_cond);
     DBUG_VOID_RETURN;
   }
@@ -762,13 +770,15 @@ public:
       to use it on relay log.
     */
       // flyyear
-      // 这面的signal_update函数用来发送binlog更新的信号,因此从主库同步binlog到
-      // 从库的dump线程，会接收到这个binlog已有更新的信号，然后启动dump
-      // binlog的流程
+      // 这面通过is_relay_log来区分是从库的ralay_log更新还是主库的binlog更新
+      // 所以relaylog和binlog用的是同一个类
+      // binlog和relay格式是相同的
     if (is_relay_log)
+        // flyyear 从库写入relaylog后给sql线程发送信号
       signal_update();
     else
     {
+      // 这面的signal_update函数用来发送binlog更新的信号,因此从主库dump线程，会接收到这个binlog已有更新的信号，然后启动dump binlog的流程
       lock_binlog_end_pos();
       // flyyear binlog_end_pos 是全局变量，标记binlog最后的位置
       binlog_end_pos= my_b_tell(&log_file);

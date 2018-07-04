@@ -2986,6 +2986,7 @@ static void restore_pluginvar_names(sys_var *first)
                           acquired while copying variables from global
                           variables copy.
 */
+// flyyear 分配内存和动态变量，从全部的系统变量到每个线程的系统变量
 void alloc_and_copy_thd_dynamic_variables(THD *thd, bool global_lock)
 {
   uint idx;

@@ -4666,6 +4666,7 @@ bool validate_comment_length(THD *thd, const char *comment_str,
     apply it to the table.
 */
 
+// flyyear 如果建表时没有指定字符的格式，下面会到db.opt文件里面去读取
 static void set_table_default_charset(THD *thd,
 				      HA_CREATE_INFO *create_info, char *db)
 {

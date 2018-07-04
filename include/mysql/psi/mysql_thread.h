@@ -179,6 +179,7 @@ typedef struct st_mysql_prlock mysql_prlock_t;
 struct st_mysql_cond
 {
   /** The real condition */
+    // flyyear 定义条件变量
   native_cond_t m_cond;
   /**
     The instrumentation hook.

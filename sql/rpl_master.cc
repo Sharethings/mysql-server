@@ -124,6 +124,7 @@ void end_slave_list()
     1	Error.   Error message sent to client
 */
 
+// flyyear 从库连接验证
 int register_slave(THD* thd, uchar* packet, size_t packet_length)
 {
   int res;
@@ -309,8 +310,8 @@ bool show_slave_hosts(THD* thd)
     VAR[BYTES]= '\0';                                                   \
   } while (0)
 
-
-// flyyear 发送binlog给slave
+// flyyear sql_parse里面，如果是COM_BINLOG_DUMP命令, 走到这面
+// 从库通过binlog file和pos来请求binlog
 bool com_binlog_dump(THD *thd, char *packet, size_t packet_length)
 {
   DBUG_ENTER("com_binlog_dump");
@@ -408,13 +409,14 @@ error_malformed_packet:
   DBUG_RETURN(true);
 }
 
-// flyyear 这面发送binlig
+// flyyear 这面发送binlog
 void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
                        Gtid_set* slave_gtid_executed, uint32 flags)
 {
     // flyyear 这面是定义一个Binlog_sender的类
   Binlog_sender sender(thd, log_ident, pos, slave_gtid_executed, flags);
 
+  // flyyear 这件调用rpl_binlog_sender里面的run函数开始发送binlog
   sender.run();
 }
 
@@ -516,6 +518,8 @@ private:
 
 */
 
+// flyyear 这面根据从库的id杀死原有的同一个从库的dump线程,
+// 使得每一个从库只有一个dump线程
 void kill_zombie_dump_threads(THD *thd)
 {
   String slave_uuid;

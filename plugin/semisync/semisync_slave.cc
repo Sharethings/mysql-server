@@ -97,6 +97,7 @@ int ReplSemiSyncSlave::slaveStop(Binlog_relay_IO_param *param)
   return 0;
 }
 
+// flyyear 向主库发送ack包
 int ReplSemiSyncSlave::slaveReply(MYSQL *mysql,
                                  const char *binlog_filename,
                                  my_off_t binlog_filepos)

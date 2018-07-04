@@ -865,7 +865,8 @@ void cleanup_items(Item *item)
   @retval
     1  request of thread shutdown (see dispatch_command() description)
 */
-// flyyear 这面开始执行命令
+
+// flyyear 这面开始接受命令并开始执行
 bool do_command(THD *thd)
 {
   bool return_value;
@@ -902,6 +903,8 @@ bool do_command(THD *thd)
       the client, the connection is closed or "net_wait_timeout"
       number of seconds has passed.
     */
+      // flyyear 这面就是堵塞式读，直到客户端发送来命令, 连接关闭或者
+      // 等待时间超时
     net= thd->get_protocol_classic()->get_net();
     my_net_set_read_timeout(net, thd->variables.net_wait_timeout);
     net_new_transaction(net);
@@ -1213,6 +1216,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     Commands which always take a long time are logged into
     the slow log only if opt_log_slow_admin_statements is set.
   */
+  // flyyear 只有在设置了参数log_slow_admin_statements才会把花费长时间的命令写入到慢日志里面
   thd->enable_slow_log= TRUE;
   thd->lex->sql_command= SQLCOM_END; /* to avoid confusing VIEW detectors */
   thd->set_time();
@@ -1431,6 +1435,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     break;
   }
   // flyyear insert的语句类型走到COM_QUERY这面
+  // 大部分的SQL语句走到这面
   case COM_QUERY:
   {
     DBUG_ASSERT(thd->m_digest == NULL);
@@ -1684,7 +1689,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     // flyyear 从库根据file、pos向Master请求数据
   case COM_BINLOG_DUMP:
     // TODO: access of protocol_classic should be removed
-    DBUG_PRINT("flyyear", ("in sql_parse.cc COM_BINLOG_DUMP"));
+    DBUG_PRINT("flyyear", ("in sql_parse.cc COM_BINLOG_DUMP, thd is %d", thd));
     error=
       com_binlog_dump(thd,
         (char*)thd->get_protocol_classic()->get_raw_packet(),
@@ -3422,7 +3427,8 @@ end_with_restore_list:
 
   case SQLCOM_SLAVE_START:
   {
-      // flyyear 这面启动从库
+      // flyyear 启动一个从库，命令会发送到这面
+    DBUG_PRINT("flyyear", ("in sql_parse.cc SQLCOM_SLAVE_START"));
     res= start_slave_cmd(thd);
     break;
   }

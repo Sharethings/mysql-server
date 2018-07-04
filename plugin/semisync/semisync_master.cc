@@ -240,6 +240,7 @@ int ActiveTranx::signal_waiting_sessions_all()
   return function_exit(kWho, 0);
 }
 
+// flyyear 这面唤醒可以唤醒的等待的线程
 int ActiveTranx::signal_waiting_sessions_up_to(const char *log_file_name,
                                                my_off_t log_file_pos)
 {
@@ -250,6 +251,7 @@ int ActiveTranx::signal_waiting_sessions_up_to(const char *log_file_name,
   int cmp= ActiveTranx::compare(entry->log_name_, entry->log_pos_, log_file_name, log_file_pos) ;
   while (entry && cmp <= 0)
   {
+      // flyyear 如果符合条件，就将线程唤醒
     mysql_cond_broadcast(&entry->cond);
     entry= entry->next_;
     if (entry)
@@ -362,7 +364,7 @@ int ActiveTranx::clear_active_tranx_nodes(const char *log_file_name,
   return function_exit(kWho, 0);
 }
 
-// flyyear 从库发送给master ack回包后，执行此函数
+// flyyear 主库接收到从库的ack包后，调用此函数
 int ReplSemiSyncMaster::reportReplyPacket(uint32 server_id, const uchar *packet,
                              ulong packet_len)
 {
@@ -623,6 +625,7 @@ bool ReplSemiSyncMaster::is_semi_sync_slave()
   return val;
 }
 
+// flyyear 主库得到从库收到binlog的确认包
 void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
                                            my_off_t log_file_pos)
 {
@@ -683,7 +686,7 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
                             log_file_name, (unsigned long)log_file_pos);
   }
 
-  // flyyear 若当前等待开启semisync的备库>0
+  // flyyear 等待备库相应的线程数>0
   if (rpl_semi_sync_master_wait_sessions > 0)
   {
     /* Let us check if some of the waiting threads doing a trx
@@ -794,7 +797,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
       // flyyear is_on()表示半同步是否OK
       // 退出while循环有两种方式：
       // 1. 半同步退化
-      // 2. 务的binlog已经同步到从库
+      // 2. 事务的binlog已经同步到从库
     while (is_on())
     {
       if (reply_file_name_inited_)
@@ -907,6 +910,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
       /* wait for the position to be ACK'ed back */
       assert(entry);
       entry->n_waiters++;
+      // flyyear 等待条件变量并设置等待超时时间
       wait_result= mysql_cond_timedwait(&entry->cond, &LOCK_binlog_, &abstime);
       entry->n_waiters--;
       /*
@@ -941,7 +945,7 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
         wait_time = getWaitTime(start_ts);
         if (wait_time < 0)
         {
-            // flyyear 这面表明始终错误，有可能做了时钟调整
+            // flyyear 这面表明时钟错误，有可能做了时钟调整
           if (trace_level_ & kTraceGeneral)
           {
             sql_print_information("Assessment of waiting time for commitTrx "
