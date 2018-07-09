@@ -88,6 +88,7 @@ public:
 /**
   Class for maintaining the commit stages for binary log group commit.
  */
+// flyyear 类用于记录binlog组提交的提交阶段
 class Stage_manager {
 public:
   class Mutex_queue {
@@ -143,6 +144,7 @@ public:
        Pointer to the first thread in the queue, or NULL if the queue is
        empty.
     */
+    // flyyear 指向队列的最前端
     THD *m_first;
 
     /**
@@ -151,6 +153,7 @@ public:
        This is either @c &first, or a pointer to the @c next_to_commit of
        the last thread that is enqueued.
     */
+    // 指向保存队列末尾位置的指针
     THD **m_last;
 
     /** size of the queue */
@@ -177,9 +180,11 @@ public:
   /**
      Constants for queues for different stages.
    */
+  // flyyea 组提交分为下面四个阶段
+  // 不同的阶段有不变的四个队列
   enum StageID {
-    FLUSH_STAGE,
-    SYNC_STAGE,
+    FLUSH_STAGE, // 刷binlog
+    SYNC_STAGE,  // sync the file to disk 
     COMMIT_STAGE,
     STAGE_COUNTER
   };
@@ -301,6 +306,9 @@ private:
      - Waiting. Threads waiting to be processed
      - Committing. Threads waiting to be committed.
    */
+  // flyyear 这面定义了三个队列
+  // 上面说只需要两个队列
+  // 等待队列、提交队列
   Mutex_queue m_queue[STAGE_COUNTER];
 
   /** Condition variable to indicate that the commit was processed */

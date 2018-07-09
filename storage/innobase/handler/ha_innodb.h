@@ -67,6 +67,8 @@ typedef struct st_innobase_share {
 struct row_prebuilt_t;
 
 /** The class defining a handle to an InnoDB table */
+
+// flyyear 存储引擎的类的积累都是handler
 class ha_innobase: public handler
 {
 public:

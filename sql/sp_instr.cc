@@ -923,6 +923,8 @@ bool sp_instr_stmt::execute(THD *thd, uint *nextp)
     query_logger.general_log_write(thd, COM_QUERY, thd->query().str,
                                    thd->query().length);
 
+  // flyyear 从query_cache中找到结果发送到客户端
+  // <=表示没有找到
   if (query_cache.send_result_to_client(thd, thd->query()) <= 0)
   {
     rc= validate_lex_and_execute_core(thd, nextp, false);
@@ -1013,7 +1015,7 @@ bool sp_instr_stmt::exec_core(THD *thd, uint *nextp)
   thd->lex->sphead= thd->sp_runtime_ctx->sp;
 
   PSI_statement_locker *statement_psi_saved= thd->m_statement_psi;
-
+ // flyyear 像普通的sql一样开始执行
   bool rc= mysql_execute_command(thd);
 
   thd->lex->set_sp_current_parsing_ctx(NULL);

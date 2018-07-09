@@ -1314,7 +1314,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     goto done;
   }
 #endif /* !EMBEDDED_LIBRARY */
-
+// flyyear COM_INIT_DB和SQLCOM_CHANGE_DB区别
+// COM_INIT_DB是mysql客户端连接过来的命令为use db，而SQlCOM_CHANGE_DB是COM_QUERY类型，这个命令的发送比较简单，只要不通过mysql客户端即可。可以通过一些Connector以Query的方式进行执行，如C API提供的mysql_query函数，mysql_query(conn, üse test");
   switch (command) {
   case COM_INIT_DB:
   {
@@ -1472,6 +1473,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
            ! thd->is_error())
     {
+    // flyyear 多个查询一起，一个一个执行，但是我测试的时候发现多个命令通过';'
+    // 隔开，抓包发现他们时候是一个一个发送给主库的
       /*
         Multiple queries exits, execute them individually
       */
@@ -2429,7 +2432,8 @@ static inline void binlog_gtid_end_transaction(THD *thd)
     TRUE        Error
 */
 
-// flyyear 这面开始执行语句
+// flyyear 执行保存在lex->sql_command的命令
+// first_level默认值为false
 int
 mysql_execute_command(THD *thd, bool first_level)
 {
@@ -3583,6 +3587,7 @@ end_with_restore_list:
   {
     DBUG_ASSERT(first_table == all_tables && first_table != 0);
     DBUG_ASSERT(lex->m_sql_cmd != NULL);
+
     DBUG_PRINT("flyyear", ("in sqlparse.cc SQLCOM_INSERT_SELECT"));
     // flyyear 这面开始执行insert的语句
     // 这面也是通过虚基类实现的多态
@@ -4504,6 +4509,7 @@ end_with_restore_list:
         By this moment all needed SPs should be in cache so no need to look 
         into DB. 
       */
+      // flyyear 对存储过程进行解析
       if (!(sp= sp_find_routine(thd, SP_TYPE_PROCEDURE, lex->spname,
                                 &thd->sp_proc_cache, TRUE)))
       {
@@ -4576,12 +4582,18 @@ end_with_restore_list:
              about writing into binlog.
           So just execute the statement.
         */
+    // flyyear 执行存储过程
 	res= sp->execute_procedure(thd, &lex->call_value_list);
 
 	thd->variables.select_limit= select_limit;
 
         thd->server_status&= ~bits_to_be_cleared;
 
+    // flyyear 这面执行完语句发送一个OK包
+    // res false 表示执行OK
+  DBUG_PRINT("debug",
+             ("in SQL_COMQUERY res is: %d",
+              res));
 	if (!res)
         {
           my_ok(thd, (thd->get_row_count_func() < 0) ? 0 : thd->get_row_count_func());
@@ -5453,9 +5465,11 @@ void mysql_init_multi_delete(LEX *lex)
   @param[out]  found_semicolon For multi queries, position of the character of
                                the next query in the query text.
 */
-
+// flyyear 这面解析执行命令
+// 直接在parse里面执行了命令，代码真是乱
 void mysql_parse(THD *thd, Parser_state *parser_state)
 {
+  // flyyear GNU __attribute__ 属性设置 unused表示变量有可能用不到
   int error MY_ATTRIBUTE((unused));
   DBUG_ENTER("mysql_parse");
   DBUG_PRINT("mysql_parse", ("query: '%s'", thd->query().str));
@@ -5611,7 +5625,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             error= 1;
           }
           else
-              // flyyear 这面开始执行语句
+            // flyyear 这面开始执行命令
             error= mysql_execute_command(thd, true);
 
           MYSQL_QUERY_EXEC_DONE(error);

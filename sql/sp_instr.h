@@ -53,11 +53,13 @@ public:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
+// flyyear
+// MYSQL包括的指令有：sp_instr_stmt（执行SQL语句的指令）、sp_instr_set（设置变量的指令）、sp_instr_set_trigger_field（设置触发器中涉及到NEW/OLD变量的值的指令）、sp_instr_jump、sp_instr_jump_if_not（执行跳转指令）、sp_instr_freturn（函数返回指令）、sp_instr_cpush（游标声明指令）、sp_instr_copen（打开游标的指令）、sp_instr_cclose（关闭游标的指令）、sp_instr_cfetch（从游标取数据的指令）等
 /**
   Base class for every SP-instruction. sp_instr defines interface and provides
   base implementation.
 */
+// flyyear 每一个存储过程命令的基类，sp_instr定义了接口并且提供基本实现
 class sp_instr : public Query_arena,
                  public Sql_alloc,
                  public sp_printable

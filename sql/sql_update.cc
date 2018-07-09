@@ -238,7 +238,7 @@ bool mysql_update_prepare_table(THD *thd, SELECT_LEX *select)
     false - OK
     true  - error
 */
-
+// flyyear 执行普通的update语句
 bool mysql_update(THD *thd,
                   List<Item> &fields,
                   List<Item> &values,
@@ -797,6 +797,7 @@ bool mysql_update(THD *thd,
         check_constant_expressions(values))
       read_removal= table->check_read_removal(qep_tab.quick()->index);
 
+    // flyyear 这面看样子是一行一行的update
     while (true)
     {
       error= info.read_record(&info);
@@ -874,11 +875,12 @@ bool mysql_update(THD *thd,
           else
           {
             /* Non-batched update */
+              // flyyear 调用hander里面的ha_update_row的方法
             error= table->file->ha_update_row(table->record[1],
                                               table->record[0]);
           }
           if (error == 0)
-            updated++;
+            updated++; // flyyear 记录更新的行数
           else if (error == HA_ERR_RECORD_IS_THE_SAME)
             error= 0;
           else
@@ -2832,6 +2834,9 @@ bool Query_result_update::send_eof()
   @return true on error
   @return false otherwise.
 */
+// flyyear 单张表的更新
+// 这面执行单张表如果执行OK，执行完成
+// 否则会将变量switch_to_multitable设置为true，然后外面调用execute_multi_table_update方法
 bool Sql_cmd_update::try_single_table_update(THD *thd,
                                              bool *switch_to_multitable)
 {
@@ -2995,9 +3000,10 @@ bool Sql_cmd_update::execute_multi_table_update(THD *thd)
   return res;
 }
 
-
+// flyyear 简单的update语句执行到这面
 bool Sql_cmd_update::execute(THD *thd)
 {
+    // flyyear SQLCOM_UPDATE_MULTI 表示要更新多张表
   if (thd->lex->sql_command == SQLCOM_UPDATE_MULTI)
   {
     return multi_update_precheck(thd, thd->lex->select_lex->get_table_list()) ||
@@ -3005,6 +3011,7 @@ bool Sql_cmd_update::execute(THD *thd)
   }
 
   bool switch_to_multitable;
+  // flyyear 更新单张表
   if (try_single_table_update(thd, &switch_to_multitable))
     return true;
   if (switch_to_multitable)

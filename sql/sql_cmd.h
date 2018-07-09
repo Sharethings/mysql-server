@@ -47,6 +47,7 @@ class THD;
   create one or more Sql_cmd objects to represent the actual SQL commands.
 */
 // flyyear  这面定义的是一个虚类Sql_cmd
+// sql命令的描述
 // 是解析和运行之间的接口
 class Sql_cmd : public Sql_alloc
 {

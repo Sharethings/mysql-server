@@ -1766,7 +1766,8 @@ bool sp_show_create_routine(THD *thd, enum_sp_type type, sp_name *name)
   @retval
     NULL    in case of error.
 */
-
+// flyyear
+// 通过传递过来的存储过程或函数名字从保存的存储过程缓存里和mysql.proc表里面找到对应的定义
 sp_head *sp_find_routine(THD *thd, enum_sp_type type, sp_name *name,
                          sp_cache **cp, bool cache_only)
 {

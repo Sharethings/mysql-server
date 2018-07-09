@@ -455,6 +455,7 @@ bool trans_commit_stmt(THD *thd)
 
   if (thd->get_transaction()->is_active(Transaction_ctx::STMT))
   {
+      // flyyear 下面进行事务的提交
     res= ha_commit_trans(thd, FALSE);
     if (! thd->in_active_multi_stmt_transaction())
       trans_reset_one_shot_chistics(thd);

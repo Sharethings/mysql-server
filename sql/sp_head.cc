@@ -534,7 +534,7 @@ Field *sp_head::create_result_field(size_t field_max_length,
   return field;
 }
 
-
+// flyyear 具体执行存错过程中一个一个的命令
 bool sp_head::execute(THD *thd, bool merge_da_on_success)
 {
   char saved_cur_db_name_buf[NAME_LEN+1];
@@ -713,6 +713,7 @@ bool sp_head::execute(THD *thd, bool merge_da_on_success)
   /* Discard the initial part of executing routines. */
   thd->profiling.discard_current_query();
 #endif
+  // 从存储过程中取出每一个语句执行
   do
   {
     sp_instr *i;
@@ -728,6 +729,7 @@ bool sp_head::execute(THD *thd, bool merge_da_on_success)
 #endif
 
     /* get_instr returns NULL when we're done. */
+    // flyyear 这面的ip是上面定义的uint类型
     i = get_instr(ip);
     if (i == NULL)
     {
@@ -786,6 +788,7 @@ bool sp_head::execute(THD *thd, bool merge_da_on_success)
     if (thd->rewritten_query.length())
       thd->rewritten_query.mem_free();
 
+    // flyyear 这面现在调用的是sp_instr.cc 文件中的execute
     err_status= i->execute(thd, &ip);
 
 #ifdef HAVE_PSI_STATEMENT_INTERFACE
@@ -1340,7 +1343,7 @@ err_with_cleanup:
   DBUG_RETURN(err_status);
 }
 
-
+// flyyear 这面执行存储过程
 bool sp_head::execute_procedure(THD *thd, List<Item> *args)
 {
   bool err_status= FALSE;
@@ -1518,6 +1521,7 @@ bool sp_head::execute_procedure(THD *thd, List<Item> *args)
 
   locker= MYSQL_START_SP(&psi_state, m_sp_share);
 #endif
+  // flyyear 执行存储过程
   if (!err_status)
     err_status= execute(thd, TRUE);
 #ifdef HAVE_PSI_SP_INTERFACE

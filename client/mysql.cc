@@ -2122,7 +2122,6 @@ static int get_options(int argc, char **argv)
 
 static int read_and_execute(bool interactive)
 {
-
   /*
     line can be allocated by:
     - batch_readline. Use my_free()

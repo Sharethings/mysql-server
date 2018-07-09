@@ -8013,7 +8013,7 @@ int handler::ha_write_row(uchar *buf)
   DBUG_RETURN(0);
 }
 
-
+// flyyear 这面更新行
 int handler::ha_update_row(const uchar *old_data, uchar *new_data)
 {
   int error;
@@ -8040,6 +8040,7 @@ int handler::ha_update_row(const uchar *old_data, uchar *new_data)
                   set_my_errno(HA_ERR_CRASHED);
                   return(HA_ERR_CRASHED););
 
+  // flyyear 这面调用存储引擎层的函数执行update_row
   MYSQL_TABLE_IO_WAIT(PSI_TABLE_UPDATE_ROW, active_index, error,
     { error= update_row(old_data, new_data);})
 

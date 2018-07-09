@@ -57,6 +57,8 @@ enum enum_duplicates { DUP_ERROR, DUP_REPLACE, DUP_UPDATE };
       of the INSERT ... ON DUPLICATE KEY UPDATE no matter whether the row
       was actually changed or not.
 */
+// flyyear 此类包含数据的变化，有三种操作
+// 插入语句、更新语句、删除语句
 class COPY_INFO: public Sql_alloc
 {
 public:
@@ -66,7 +68,7 @@ public:
     Statistics() :
       records(0), deleted(0), updated(0), copied(0), error_count(0), touched(0)
     {}
-
+// flyyear ha_rows 是unsigned long long int别名
     ha_rows records; /**< Number of processed records */
     ha_rows deleted; /**< Number of deleted records */
     ha_rows updated; /**< Number of updated records */

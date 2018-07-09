@@ -65,17 +65,6 @@ char *batch_readline(LINE_BUFFER *line_buff, bool binary_mode)
     return 0;
   if (out_length && pos[out_length-1] == '\n')
   {
-#if defined(_WIN32)
-    /*
-      On Windows platforms we also need to remove '\r', 
-      unconditionally.
-     */
-
-    /* Remove '\n' */
-    if (--out_length && pos[out_length-1] == '\r')  
-      /* Remove '\r' */
-      out_length--;                                 
-#else
     /*
       On Unix-like platforms we only remove it if we are not 
       on binary mode.
@@ -84,8 +73,7 @@ char *batch_readline(LINE_BUFFER *line_buff, bool binary_mode)
     /* Remove '\n' */
     if (--out_length && !binary_mode && pos[out_length-1] == '\r')
       /* Remove '\r' */
-      out_length--;                                 
-#endif
+      out_length--;
   }
   line_buff->read_length=out_length;
   pos[out_length]=0;
@@ -253,6 +241,7 @@ char *intern_read_line(LINE_BUFFER *buffer, ulong *out_length)
   for (;;)
   {
     pos=buffer->end_of_line;
+    // flyyear 找到换行和或者结束
     while (*pos != '\n' && pos != buffer->end)
       pos++;
     if (pos == buffer->end)

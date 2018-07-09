@@ -159,6 +159,7 @@ struct my_aligned_storage
 */
 #ifndef MY_ATTRIBUTE
 #if defined(__GNUC__)
+// flyyear __attribute GNU特有的属性定义
 #  define MY_ATTRIBUTE(A) __attribute__(A)
 #else
 #  define MY_ATTRIBUTE(A)

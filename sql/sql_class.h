@@ -4685,7 +4685,7 @@ private:
 
 
 /** A short cut for thd->get_stmt_da()->set_ok_status(). */
-
+// flyyear 返回OK包，包含影响的行数
 inline void
 my_ok(THD *thd, ulonglong affected_rows= 0, ulonglong id= 0,
         const char *message= NULL)

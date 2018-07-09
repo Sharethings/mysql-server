@@ -478,6 +478,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   if (mysql_prepare_insert(thd, table_list, values, false))
     goto exit_without_my_ok;
 
+  DBUG_PRINT("flyyear", ("in mysql_insert after mysql_prepare_insert"));
   insert_table= lex->insert_table_leaf->table;
 
   if (duplicates == DUP_UPDATE || duplicates == DUP_REPLACE)
@@ -486,10 +487,12 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   /* Must be done before can_prune_insert, due to internal initialization. */
   if (info.add_function_default_columns(insert_table, insert_table->write_set))
     goto exit_without_my_ok; /* purecov: inspected */
+  DBUG_PRINT("flyyear", ("in mysql_insert after info.add_function_default_columns"));
   if (duplicates == DUP_UPDATE &&
       update.add_function_default_columns(insert_table,
                                           insert_table->write_set))
     goto exit_without_my_ok; /* purecov: inspected */
+    DBUG_PRINT("flyyear", ("in mysql_insert after add_function_default_columns"));
 
   context= &select_lex->context;
   /*
@@ -523,6 +526,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
                                            &prune_needs_default_values,
                                            &used_partitions))
       goto exit_without_my_ok; /* purecov: inspected */
+    DBUG_PRINT("flyyear", ("in mysql_insert after can_prune_insert"));
 
     if (can_prune_partitions != partition_info::PRUNE_NO)
     {
@@ -549,6 +553,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   }
 
   its.rewind();
+  // flyyear 对每条记录调用write_record
   while ((values= its++))
   {
     counter++;
@@ -624,6 +629,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
     err= explain_single_table_modification(thd, &plan, select_lex);
     goto exit_without_my_ok;
   }
+    DBUG_PRINT("flyyear", ("in mysql_insert after lex->describe"));
 
   /*
     Count warnings for all inserts.
@@ -650,6 +656,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
     }
 #endif
 
+    DBUG_PRINT("flyyear", ("in mysql_insert after thd->slave_thread"));
   error=0;
   THD_STAGE_INFO(thd, stage_update);
   if (duplicates == DUP_REPLACE &&
@@ -860,6 +867,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
 	such case the flag is ignored for constructing binlog event.
 	*/
 	DBUG_ASSERT(thd->killed != THD::KILL_BAD_DATA || error > 0);
+    // flyyear 写入binlog
         if (thd->binlog_query(THD::ROW_QUERY_TYPE,
                               thd->query().str, thd->query().length,
 			           transactional_table, FALSE, FALSE,
@@ -896,8 +904,10 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
        !insert_table->triggers->has_delete_triggers()))
     insert_table->file->extra(HA_EXTRA_WRITE_CANNOT_REPLACE);
 
+DBUG_PRINT("flyyear", ("in mysql_insert before thd->is_error"));
   if (thd->is_error())
     goto exit_without_my_ok;
+DBUG_PRINT("flyyear", ("in mysql_insert after thd->is_error"));
 
   if (insert_many_values.elements == 1 &&
       (!(thd->variables.option_bits & OPTION_WARNINGS) || !thd->cuted_fields))
@@ -1506,7 +1516,8 @@ static int last_uniq_key(TABLE *table,uint keynr)
     0     - success
     non-0 - error
 */
-
+// flyyear COPY_INFO *info 用来处理唯一键冲突，记录影响行数
+//   COPY_INFO *update 处理 INSERT ON DUPLICATE KEY UPDATE 相关信息
 int write_record(THD *thd, TABLE *table, COPY_INFO *info, COPY_INFO *update)
 {
   int error, trg_error= 0;
@@ -1534,6 +1545,7 @@ int write_record(THD *thd, TABLE *table, COPY_INFO *info, COPY_INFO *update)
   if (duplicate_handling == DUP_REPLACE || duplicate_handling == DUP_UPDATE)
   {
     DBUG_ASSERT(duplicate_handling != DUP_UPDATE || update != NULL);
+    // flyyear ha_write_row调用存储引擎的接口
     while ((error=table->file->ha_write_row(table->record[0])))
     {
       uint key_nr;
@@ -3088,7 +3100,7 @@ void Query_result_create::abort_result_set()
   DBUG_VOID_RETURN;
 }
 
-
+// flyyear insert语句在sql_parse中 到这执行
 bool Sql_cmd_insert::execute(THD *thd)
 {
   DBUG_PRINT("flyyear", ("in Sql_comd_insert::execute"));
@@ -3104,7 +3116,7 @@ bool Sql_cmd_insert::execute(THD *thd)
   if (open_temporary_tables(thd, all_tables))
     return true;
 
-  // flyyear 这面进行权限的检查
+  // flyyear insert语句权限检查
   if (insert_precheck(thd, all_tables))
     return true;
 
@@ -3117,7 +3129,7 @@ bool Sql_cmd_insert::execute(THD *thd)
     thd->push_internal_handler(&strict_handler);
 
   MYSQL_INSERT_START(const_cast<char*>(thd->query().str));
-  // flyyear 开始insert
+  // flyyear 执行insert语句
   res= mysql_insert(thd, all_tables);
   MYSQL_INSERT_DONE(res, (ulong) thd->get_row_count_func());
 
