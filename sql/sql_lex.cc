@@ -1280,6 +1280,7 @@ bool consume_comment(Lex_input_stream *lip, int remaining_recursions_permitted)
 				(which can't be followed by a signed number)
 */
 
+// flyyear 词法分析入口函数
 int MYSQLlex(YYSTYPE *yylval, YYLTYPE *yylloc, THD *thd)
 {
   Lex_input_stream *lip= & thd->m_parser_state->m_lip;
@@ -1308,7 +1309,7 @@ int MYSQLlex(YYSTYPE *yylval, YYLTYPE *yylloc, THD *thd)
     lip->add_digest_token(token, yylval);
     return token;
   }
-
+// flyyear 解析出一个token
   token= lex_one_token(yylval, thd);
   yylloc->cpp.start= lip->get_cpp_tok_start();
   yylloc->raw.start= lip->get_tok_start();
@@ -1357,6 +1358,7 @@ int MYSQLlex(YYSTYPE *yylval, YYLTYPE *yylloc, THD *thd)
   return token;
 }
 
+// flyyear 解析出一个 token 的函数为 lex_one_token()。词法分析出来的每个token都会对应一个语法分析器中的终结符
 static int lex_one_token(YYSTYPE *yylval, THD *thd)
 {
   uchar c= 0;
@@ -1380,6 +1382,7 @@ static int lex_one_token(YYSTYPE *yylval, THD *thd)
     case MY_LEX_OPERATOR_OR_IDENT:	// Next is operator or keyword
     case MY_LEX_START:			// Start of token
       // Skip starting whitespace
+      // flyyear 跳过前面的空格
       while(state_map[c= lip->yyPeek()] == MY_LEX_SKIP)
       {
 	if (c == '\n')
@@ -1388,6 +1391,7 @@ static int lex_one_token(YYSTYPE *yylval, THD *thd)
         lip->yySkip();
       }
 
+      // flyyear 下面开始真正的token
       /* Start of real token */
       lip->restart_token();
       c= lip->yyGet();

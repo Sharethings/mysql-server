@@ -737,11 +737,6 @@ static bool login_connection(THD *thd)
 
   if (error)
   {           // Wrong permissions
-#ifdef _WIN32
-    if (vio_type(thd->get_protocol_classic()->get_vio()) ==
-        VIO_TYPE_NAMEDPIPE)
-      my_sleep(1000);       /* must wait after eof() */
-#endif
     DBUG_RETURN(1);
   }
   /* Connect completed, set read/write timeouts back to default */

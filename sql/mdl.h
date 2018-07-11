@@ -52,7 +52,8 @@ typedef struct st_lf_pins LF_PINS;
    An interface to separate the MDL module from the THD, and the rest of the
    server code.
  */
-
+// flyyear 接口将THD中的MDL模块和其他部分区分开
+// 在8.0之前，DDL是不属于事务范畴的，如果事务和DDL并行执行，操作相关联的表的话，会出现各种意想不到问题，如事务特性被破坏、binlog顺序错乱等，为了解决类似这些问题，MySQL在5.5.3引入了MDL锁(Metadata Locking), MDL 是在 MySQL server 层实现的一个模块，通过对外接口和server层其它模块进行交互，在sql/mdl.h和sql/mdl.cc中实现
 class MDL_context_owner
 {
 public:
