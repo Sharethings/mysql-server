@@ -31,6 +31,8 @@ extern void reject_geometry_args(uint arg_count, Item **args,
 void unsupported_json_comparison(size_t arg_count, Item **args,
                                  const char *msg);
 
+// flyyear
+// 用以支持各种函数操作。如求绝对值、求长度、取余等等。本文件中也定义了许多子类，来丰富和发展MySQL可以处理的对象
 class Item_func :public Item_result_field
 {
   typedef Item_result_field super;

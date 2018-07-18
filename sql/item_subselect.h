@@ -46,6 +46,8 @@ typedef Comp_creator* (*chooser_compare_func_creator)(bool invert);
 
 /* base class for subselects */
 
+// flyyear
+// 尽管子查询可以被优化，即需要对子查询内部的对象分解，但是，MySQL把子查询当作一个对象，相关辅助处理子查询的对象也在这个文件中定义。
 class Item_subselect :public Item_result_field
 {
   typedef Item_result_field super;

@@ -743,6 +743,8 @@ typedef Item* (Item::*Item_transformer) (uchar *arg);
 typedef void (*Cond_traverser) (const Item *item, void *arg);
 
 
+// flyyear 基础类
+// 总的对象定义类 ，本文件定义了许多子类，来丰富和发展Mysql可以处理的对象，派生的子类描述所有SQL语句的对象
 class Item : public Parse_tree_node
 {
   typedef Parse_tree_node super;

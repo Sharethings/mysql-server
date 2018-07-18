@@ -306,6 +306,7 @@ class st_select_lex;
     
 */
 
+// flyyear 定义聚集函数的处理。包括MIN和MAX，但通常这2函数个是利用索引进行优化的
 class Item_sum :public Item_result_field
 {
   typedef Item_result_field super;

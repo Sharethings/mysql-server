@@ -6539,6 +6539,7 @@ Field *Item::make_string_field(TABLE *table)
     \#    Created field
 */
 
+// flyyear 将一个Item类转化为一个Filed类返回。并不是所有的Item类返回的Filed都有意义
 Field *Item::tmp_table_field_from_field_type(TABLE *table, bool fixed_length)
 {
   /*

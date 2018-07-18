@@ -140,6 +140,7 @@ public:
   friend class Item_func;
 };
 
+// flyyear 支持比较操作，如等于、大于、小于、IN、BETWEEN、是否为NULL等
 class Item_bool_func :public Item_int_func
 {
 public:

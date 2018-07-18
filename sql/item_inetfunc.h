@@ -24,6 +24,7 @@
   Item_func_inet_aton implements INET_ATON() SQL-function.
 *************************************************************************/
 
+// flyyear 定义IPv4、IP6的处理
 class Item_func_inet_aton : public Item_int_func
 {
 public:

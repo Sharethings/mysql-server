@@ -30,6 +30,7 @@ struct Date_time_format;
 bool get_interval_value(Item *args,interval_type int_type,
 			       String *str_value, Interval *interval);
 
+// flyyear 定义时间和日期的处理函数
 class Item_func_period_add :public Item_int_func
 {
 public:

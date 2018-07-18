@@ -22,6 +22,15 @@
    Item which stores (x,y,...) and ROW(x,y,...).
    Note that this can be recursive: ((x,y),(z,t)) is a ROW of ROWs.
 */
+
+/* flyyear
+ *行值函数定义，用以支持类似如下操作：
+
+ (a, b, c) > (10, 10, 30)
+ (a, b, c) = (select c, d, e, from t1 where x=12)
+ (a, b, c) IN ((1,2,2), (3,4,5), (6,7,8)
+ (a, b, c) IN (select c, d, e, from t1)))))
+ * */
 class Item_row: public Item
 {
   typedef Item super;

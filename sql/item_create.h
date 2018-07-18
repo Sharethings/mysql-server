@@ -41,6 +41,7 @@ struct Cast_type;
   for each function, which has undesirable side effects in the grammar.
 */
 
+// flyyear 用户自定义函数的创建接口
 class Create_func
 {
 public:

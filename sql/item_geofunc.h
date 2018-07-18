@@ -34,6 +34,7 @@
    set to String result object. We have to release them properly manually
    since they won't be released when the String result is destroyed.
 */
+// flyyear 空间对象处理相关函数
 class BG_result_buf_mgr
 {
   typedef Prealloced_array<void *, 64> Prealloced_buffers;

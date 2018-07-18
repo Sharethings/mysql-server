@@ -23,6 +23,8 @@
 
 class MY_LOCALE;
 
+// flyyear 定义了字符类型的处理函数(主要是字符类型,
+// 还有一些其他类型,如make_set函数的处理但返回值是字符类型)。如一些字符集相关的处理、去左空格、字符串替换等
 class Item_str_func :public Item_func
 {
   typedef Item_func super;

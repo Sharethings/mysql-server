@@ -20,6 +20,7 @@
 
 /* This file defines all XML functions */
 
+// flyyear 定义XML类型数据的处理函数
 class Item_xml_str_func: public Item_str_func
 {
 protected:
