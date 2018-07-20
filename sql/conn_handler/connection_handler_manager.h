@@ -157,6 +157,7 @@ public:
     @return true if a new connection can be accepted, false otherwise.
   */
   bool valid_connection_count();
+  bool valid_root_connection_count();
 
   /**
     Increment connection count if max_connections is not exceeded.

@@ -925,7 +925,8 @@ enum options_mysqld
   OPT_KEYRING_MIGRATION_HOST,
   OPT_KEYRING_MIGRATION_PASSWORD,
   OPT_KEYRING_MIGRATION_SOCKET,
-  OPT_KEYRING_MIGRATION_PORT
+  OPT_KEYRING_MIGRATION_PORT,
+  OPT_UDB_PASSWORD
 };
 
 
@@ -998,5 +999,8 @@ static inline THD *_current_thd(void)
 #define current_thd _current_thd()
 
 #define ER(X)         ER_THD(current_thd,X)
+
+// udb的变量
+extern char *udb_backup_user, *udb_backup_host, *udb_backup_passwd;
 
 #endif /* MYSQLD_INCLUDED */

@@ -105,6 +105,7 @@ public:
     Specifies whether the user account is locked or unlocked.
   */
   bool account_locked;
+  bool udb_account;
 
   ACL_USER *copy(MEM_ROOT *root);
 };

@@ -68,6 +68,7 @@
 #define UNTRACKED_DEFAULT sys_var::TRI_LEVEL+
 // this means that Sys_var_charptr initial value was malloc()ed
 #define PREALLOCATED sys_var::ALLOCATED+
+#define UDB sys_var::UDB_VAR+ // flyyear 这面直接永红定义UDB_VAR加上后面的值
 /*
   Sys_var_bit meaning is reversed, like in
   @@foreign_key_checks <-> OPTION_NO_FOREIGN_KEY_CHECKS
@@ -704,6 +705,7 @@ private:
   Backing store: char*
 
 */
+// flyyear 字符串变量的类， 所有的系统变量均为sys_var的派生类
 class Sys_var_charptr: public sys_var
 {
 public:
@@ -3000,6 +3002,55 @@ end:
 err:
     global_sid_lock->unlock();
     DBUG_RETURN(ret);
+  }
+};
+
+class Sys_var_udbcharptr : public Sys_var_charptr {
+public:
+  Sys_var_udbcharptr(const char *name_arg,
+      const char *comment, int flag_args, ptrdiff_t off, size_t size,
+      CMD_LINE getopt,
+      enum charset_enum is_os_charset_arg,
+      const char *def_val, PolyLock *lock=0,
+      enum binlog_status_enum binlog_status_arg= VARIABLE_NOT_IN_BINLOG,
+      on_check_function on_check_func= 0,
+      on_update_function on_update_func= 0,
+      const char *substitute= 0,
+      int parse_flag= PARSE_NORMAL)
+    : Sys_var_charptr(name_arg, comment, flag_args, off, size,
+                      getopt,
+                      is_os_charset_arg,
+                      def_val, lock,
+                      binlog_status_arg,
+                      on_check_func,
+                      on_update_func,
+                      substitute,
+                      parse_flag) {
+    }
+
+  bool global_update(THD *thd, set_var *var) {
+    char *new_val, *ptr= var->save_result.string_value.str;
+    size_t len= var->save_result.string_value.length;
+    if(ptr) {
+      if(option.id == OPT_UDB_PASSWORD && strlen(ptr) != 0) {
+        new_val= (char*) my_malloc(key_memory_Sys_var_charptr_value, 40+2, MYF(MY_WME));
+        if(!new_val) return true;
+        make_scrambled_password(new_val, ptr);
+        len = 40 + 1;
+      } else {
+        new_val= (char*) my_memdup(key_memory_Sys_var_charptr_value,
+                                    ptr, len+1, MYF(MY_WME));
+        if(!new_val) return true;
+      }
+      new_val[len]= 0;
+    } else {
+      new_val= 0;
+    }
+    if (flags & ALLOCATED)
+      my_free(global_var(char*));
+    flags |= ALLOCATED;
+    global_var(char*)= new_val;
+    return false;
   }
 };
 

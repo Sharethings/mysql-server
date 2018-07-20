@@ -561,7 +561,7 @@ typedef ulonglong nesting_map;  /* Used for flags of nesting constructs */
 #endif
 
 typedef int		myf;	/* Type of MyFlags in my_funcs */
-typedef char		my_bool; /* Small bool */
+typedef char		my_bool; /* Small bool */ // flyyear bool类型不就是一个字节吗？
 
 /* Macros for converting *constants* to the right type */
 #define MYF(v)		(myf) (v)

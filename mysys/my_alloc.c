@@ -52,9 +52,10 @@ static inline my_bool is_mem_available(MEM_ROOT *mem_root, size_t size);
     reported as error in first alloc_root() on this memory root.
 */
 
+// flyyear 初始化内存池
 void init_alloc_root(PSI_memory_key key,
                      MEM_ROOT *mem_root, size_t block_size,
-		     size_t pre_alloc_size MY_ATTRIBUTE((unused)))
+		     size_t pre_alloc_size MY_ATTRIBUTE((unused))) // flyyear 参数pre_alloc_size表示申请内存块的最小内存
 {
   DBUG_ENTER("init_alloc_root");
   DBUG_PRINT("enter",("root: 0x%lx", (long) mem_root));
@@ -188,6 +189,7 @@ void reset_root_defaults(MEM_ROOT *mem_root, size_t block_size,
   NULL                      Memory is not available.
 */
 
+// flyyear 在内存池中申请一块内存
 void *alloc_root(MEM_ROOT *mem_root, size_t length)
 {
 #if !defined(PREALLOCATE_MEMORY_CHUNKS)

@@ -646,9 +646,11 @@ static int check_connection(THD *thd)
       return 1;
     }
   }
+  // flyyear 下面是进行socket连接
   else /* Hostname given means that the connection was on a socket */
   {
     LEX_CSTRING main_sctx_host= thd->m_main_security_ctx.host();
+    // flyyear  info: Host: localhost
     DBUG_PRINT("info",("Host: %s", main_sctx_host.str));
     thd->m_main_security_ctx.set_host_or_ip_ptr(main_sctx_host.str,
                                                 main_sctx_host.length);

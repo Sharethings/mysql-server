@@ -75,11 +75,13 @@ enum enum_var_type
   optionally it can be assigned to, optionally it can have a command-line
   counterpart with the same name.
 */
+// flyyear  所有系统变量的父类
 class sys_var
 {
 public:
-  sys_var *next;
+  sys_var *next; // feinian 这面难道是通过指针，将系统变量链表 连接起来？
   LEX_CSTRING name;
+  // flyyear 这面标志系统变量的类型
   enum flag_enum
   {
     GLOBAL=       0x0001,
@@ -89,7 +91,8 @@ public:
     READONLY=     0x0400, // 1024
     ALLOCATED=    0x0800, // 2048
     INVISIBLE=    0x1000, // 4096
-    TRI_LEVEL=    0x2000  // 8192 - default is neither GLOBAL nor SESSION
+    TRI_LEVEL=    0x2000,  // 8192 - default is neither GLOBAL nor SESSION
+    UDB_VAR=      0x4000   // 16384 - udb的变量标志
   };
   static const int PARSE_EARLY= 1;
   static const int PARSE_NORMAL= 2;
@@ -101,12 +104,14 @@ public:
                             SESSION_VARIABLE_IN_BINLOG } binlog_status;
 
 protected:
+  // flyyear 函数指针指向检查函数和更新函数
   typedef bool (*on_check_function)(sys_var *self, THD *thd, set_var *var);
   typedef bool (*on_update_function)(sys_var *self, THD *thd, enum_var_type type);
 
   int flags;            ///< or'ed flag_enum values
   int m_parse_flag;     ///< either PARSE_EARLY or PARSE_NORMAL.
   const SHOW_TYPE show_val_type; ///< what value_ptr() returns for sql_show.cc
+  // flyyear 存放变量的最大值、最小值、是否允许命令行等值
   my_option option;     ///< min, max, default values are stored here
   PolyLock *guard;      ///< *second* lock that protects the variable
   ptrdiff_t offset;     ///< offset to the value from global_system_variables
@@ -216,6 +221,9 @@ protected:
   uchar *session_var_ptr(THD *thd);
 
   uchar *global_var_ptr();
+
+public:
+  bool is_udb() const { return flags & UDB_VAR; }
 };
 
 /****************************************************************************

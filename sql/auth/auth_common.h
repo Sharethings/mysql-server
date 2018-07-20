@@ -635,6 +635,7 @@ my_bool grant_reload(THD *thd);
 ulong acl_get(const char *host, const char *ip,
               const char *user, const char *db, my_bool db_is_pattern);
 bool is_acl_user(const char *host, const char *user);
+bool is_acl_udb_user(const char *host, const char *user);
 bool acl_getroot(Security_context *sctx, char *user,
                  char *host, char *ip, const char *db);
 

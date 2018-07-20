@@ -440,6 +440,13 @@ private:
     effective user.
   */
   bool m_password_expired;
+
+  // flyyear 添加ucloudbackup账号
+  bool m_ucloudbackup;
+
+public:
+  bool is_ucloudbackup() { return m_ucloudbackup; }
+  void set_ucloudbackup() { m_ucloudbackup = true; }
 };
 
 

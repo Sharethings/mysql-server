@@ -215,6 +215,8 @@ ACL_USER::copy(MEM_ROOT *root)
   }
   dst->auth_string.str= safe_strdup_root(root, auth_string.str);
   dst->host.update_hostname(safe_strdup_root(root, host.get_host()));
+
+  dst->udb_account= udb_account;
   return dst;
 }
 
@@ -874,6 +876,25 @@ bool is_acl_user(const char *host, const char *user)
   return res;
 }
 
+bool is_acl_udb_user(const char *host, const char *user)
+{
+    ACL_USER *tmp_user;
+    // flyyear 如果已经认证过 就不用在认证了
+    if (!initialized)
+        return TRUE;
+
+    mysql_mutex_lock(&acl_cache->lock);
+    tmp_user= find_acl_user(host, user, TRUE);
+    mysql_mutex_unlock(&acl_cache->lock);
+
+    if(tmp_user != NULL && tmp_user->udb_account)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 
 /**
   Validate if a user can proxy as another user
@@ -1377,7 +1398,7 @@ validate_user_plugin_records()
     0   ok
     1   Could not initialize grant's
 */
-
+// flyyear 初始化负责用户/数据库级别的权限结构，并且从mysql数据库里面加载权限的信息
 my_bool acl_init(bool dont_read_acl_tables)
 {
   THD  *thd;
@@ -1460,6 +1481,8 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   Acl_load_user_table_schema_factory user_table_schema_factory;
   Acl_load_user_table_schema *table_schema = NULL;
   bool is_old_db_layout= false;
+  bool udb_exist= false;
+  char *udb_user= NULL, *udb_host= NULL, *udb_passwd= NULL;
   DBUG_ENTER("acl_load");
 
   DBUG_EXECUTE_IF("wl_9262_set_max_length_hostname",
@@ -1483,6 +1506,28 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 
   init_sql_alloc(key_memory_acl_mem,
                  &global_acl_memory, ACL_ALLOC_BLOCK_SIZE, 0);
+
+  // flyyear 检查udb的账号是否存在
+  if(udb_backup_user && strlen(udb_backup_user))
+  {
+      udb_exist= true;
+      // flyyear 通过strmake_root
+      // 是在内存池中申请一块内存，并且将变量udb_backup_user的变量值copy过去
+      udb_user= strmake_root(&global_acl_memory, udb_backup_user, strlen(udb_backup_user));
+      // flyyear 这面说明申请内存失败
+      if(udb_user == NULL)
+      {
+          udb_user= (char *)""; // 这面把空指针指向某一个地方
+          udb_exist= false;
+      }
+      if(!udb_backup_host ||
+         !(udb_host= strmake_root(&global_acl_memory, udb_backup_host, strlen(udb_backup_host))))
+          udb_host= (char *)"";
+      if(!udb_backup_passwd ||
+         !(udb_passwd= strmake_root(&global_acl_memory, udb_backup_passwd, strlen(udb_backup_passwd))))
+          udb_passwd= (char *)"";
+
+  }
   /*
     Prepare reading from the mysql.user table
   */
@@ -1500,6 +1545,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 
   allow_all_hosts=0;
   int read_rec_errcode;
+  // flyyear 加载user表里面的账户信息
   while (!(read_rec_errcode= read_record_info.read_record(&read_record_info)))
   {
     password_expired= false;
@@ -1532,6 +1578,8 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
                         user.user ? user.user : "",
                         user.host.get_host() ? user.host.get_host() : "");
     }
+
+    if(udb_exist && user.user != NULL && !strcmp(user.user, udb_backup_user)) continue;
 
     /* Read password from authentication_string field */
     if (table->s->fields > table_schema->authentication_string_idx())
@@ -1840,6 +1888,8 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
       set_user_salt(&user);
       user.password_expired= password_expired;
 
+      if(!udb_exist) user.udb_account= true;
+
       acl_users->push_back(user);
       if (user.host.check_allow_all_hosts())
         allow_all_hosts=1;                      // Anyone can connect
@@ -1849,6 +1899,87 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   end_read_record(&read_record_info);
   if (read_rec_errcode > 0)
     goto end;
+
+  // 添加账号
+  do {
+    // 如果user表里面有了这个账户就不添加了
+    if(!udb_exist) break;
+    ACL_USER udb_acl_user;
+    memset(&udb_acl_user, 0, sizeof(udb_acl_user));
+    int udb_len= 0;
+    udb_acl_user.can_authenticate= true;
+    udb_acl_user.account_locked= false;
+
+    udb_acl_user.user= udb_user;
+    udb_acl_user.host.update_hostname(udb_host);
+    if(check_no_resolve && hostname_requires_resolving(udb_acl_user.host.get_host())) {
+      sql_print_warning("'user' entry '%s@%s' "
+                        "ignored in --skip-name-resolve mode.",
+                        udb_acl_user.user ? udb_acl_user.user : "",
+                        udb_acl_user.host.get_host() ? udb_acl_user.host.get_host() : "");
+    }
+    udb_len= strlen(udb_passwd);
+    if (udb_len != 0) {
+      udb_acl_user.auth_string.str= udb_passwd;
+      udb_acl_user.auth_string.length= udb_len;
+    } else {
+      udb_acl_user.auth_string= EMPTY_STR;
+    }
+
+    udb_acl_user.access= 536870911; // feinian 这个有啥用的啊
+    udb_acl_user.sort= get_sort(2, udb_acl_user.host.get_host(), udb_acl_user.user);
+
+    udb_acl_user.ssl_type= SSL_TYPE_NONE;
+    udb_acl_user.ssl_cipher= 0;
+    udb_acl_user.x509_issuer= 0;
+    udb_acl_user.x509_subject= 0;
+
+    udb_acl_user.plugin= native_password_plugin_name;
+
+    plugin_ref plugin= NULL;
+    plugin= my_plugin_lock_by_name(0, udb_acl_user.plugin,
+                                        MYSQL_AUTHENTICATION_PLUGIN);
+    if(plugin) {
+      st_mysql_auth *auth = (st_mysql_auth *) plugin_decl(plugin)->info;
+      if (auth->validate_authentication_string(udb_acl_user.auth_string.str,
+                                                udb_acl_user.auth_string.length)) {
+        sql_print_warning("'user' entry '%s@%s' "
+                          "ignored in --skip-name-resolve mode.",
+                          udb_acl_user.user ? udb_acl_user.user : "",
+                          udb_acl_user.host.get_host() ? udb_acl_user.host.get_host() : "");
+       plugin_unlock(0, plugin);
+       break;
+      }
+      plugin_unlock(0, plugin);
+    }
+    udb_acl_user.password_last_changed.time_type= MYSQL_TIMESTAMP_ERROR;
+    udb_acl_user.use_default_password_lifetime= true;
+    udb_acl_user.password_lifetime= 0;
+    if(strcasecmp(udb_host, "localhost") == 0) udb_acl_user.udb_account= true;
+    set_user_salt(&udb_acl_user);
+    acl_users->push_back(udb_acl_user);
+    if(udb_acl_user.host.check_allow_all_hosts()) allow_all_hosts= 1;
+    if(strcasecmp(udb_host, "localhost") == 0) break;
+    /*
+     * feinian 这面三石哥为什么又重新搞了一遍localhost的，难道是为了确保加进去？
+     * 这样不会用户重复了？
+    memset(&udb_acl_user, 0, sizeof(udb_acl_user));
+    udb_acl_user.can_authenticate= true;
+    udb_acl_user.account_locked= false;
+    udb_acl_user.host.update_hostname("localhost");
+    udb_acl_user.user= udb_user;
+    udb_acl_user.auth_string= EMPTY_STR;
+    udb_acl_user.access= 536870911;
+    udb_acl_user.sort= 32896;
+    udb_acl_user.ssl_type= SSL_TYPE_NONE;
+    udb_acl_user.plugin= native_password_plugin_name;
+    udb_acl_user.password_last_changed.time_type= MYSQL_TIMESTAMP_ERROR;
+    udb_acl_user.use_default_password_lifetime= true;
+    udb_acl_user.password_lifetime= 0;
+    udb_acl_user.udb_account= true;
+    acl_users->push_back(udb_acl_user);
+    */
+  } while (0);
 
   std::sort(acl_users->begin(), acl_users->end(), ACL_compare());
   acl_users->shrink_to_fit();
@@ -2036,7 +2167,7 @@ void acl_free(bool end)
     FALSE  Success
     TRUE   Failure
 */
-
+// flyyear 重新读取用户和权限信息
 my_bool acl_reload(THD *thd)
 {
   TABLE_LIST tables[3];

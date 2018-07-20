@@ -45,6 +45,7 @@ static uchar *get_sys_var_length(const sys_var *var, size_t *length,
 
 sys_var_chain all_sys_vars = { NULL, NULL };
 
+// flyyear 系统变量初始化
 int sys_var_init()
 {
   DBUG_ENTER("sys_var_init");
@@ -52,11 +53,13 @@ int sys_var_init()
   /* Must be already initialized. */
   DBUG_ASSERT(system_charset_info != NULL);
 
+  // flyyear初始化一个全局的系统变量hash桶
   if (my_hash_init(&system_variable_hash, system_charset_info, 100, 0,
                    0, (my_hash_get_key) get_sys_var_length, 0, HASH_UNIQUE,
                    PSI_INSTRUMENT_ME))
     goto error;
 
+  // flyyear 将所有的系统变量存放到全局hash桶中
   if (mysql_add_sys_var_chain(all_sys_vars.first))
     goto error;
 
@@ -160,6 +163,7 @@ sys_var::sys_var(sys_var_chain *chain, const char *name_arg,
   option.value= (uchar **)global_var_ptr();
   option.def_value= def_val;
 
+  // flyyear 将变量存储到一个全局的链表中
   if (chain->last)
     chain->last->next= this;
   else
@@ -652,7 +656,7 @@ int sql_set_variables(THD *thd, List<set_var_base> *var_list)
   set_var_base *var;
   while ((var=it++))
   {
-    if ((error= var->check(thd)))
+    if ((error= var->check(thd))) // flyyear set_var的方法check
       goto err;
   }
   if (!(error= MY_TEST(thd->is_error())))
@@ -735,6 +739,13 @@ int set_var::check(THD *thd)
 {
   DBUG_ENTER("set_var::check");
   var->do_deprecated_warning(thd);
+
+  if (var->is_udb()) {
+    if(!thd->security_context()->is_ucloudbackup()) {
+      my_error(ER_UDB_SET_PRIVATE_VARIABLES, MYF(0), var->name.str);
+      DBUG_RETURN(-1);
+    }
+  }
   if (var->is_readonly())
   {
     my_error(ER_INCORRECT_GLOBAL_LOCAL_VAR, MYF(0), var->name.str, "read only");

@@ -400,6 +400,7 @@ my_bool check_proxy_users= 0, mysql_native_password_proxy_users= 0, sha256_passw
   changed). False otherwise.
 */
 volatile bool mqh_used = 0;
+// flyyear 这面定义全局变量
 my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
 
@@ -602,6 +603,7 @@ Le_creator le_creator;
 Rpl_filter* rpl_filter;
 Rpl_filter* binlog_filter;
 
+// flyyear 这面用来标志全局变量
 struct system_variables global_system_variables;
 struct system_variables max_system_variables;
 struct system_status_var global_status_var;
@@ -704,10 +706,14 @@ static int cleanup_done;
 static ulong opt_specialflag;
 static char *opt_update_logname;
 char *opt_binlog_index_name;
+// 定义一个全局变量用于存放系统变量的值,所以下面定义了几个账户和密码的全局变量
 char *mysql_home_ptr, *pidfile_name_ptr;
 char *default_auth_plugin;
 /** Initial command line arguments (count), after load_defaults().*/
 static int defaults_argc;
+
+// flyyear 这面定义的关于udb账号的全局变量
+char *udb_backup_user, *udb_backup_host, *udb_backup_passwd;
 /**
   Initial command line arguments (arguments), after load_defaults().
   This memory is allocated by @c load_defaults() and should be freed
@@ -1681,6 +1687,7 @@ static void start_signal_handler()
   main_thread_id= my_thread_self();
 
   mysql_mutex_lock(&LOCK_start_signal_handler);
+  // flyyear 创建一个线程专门用来处理信号的问题
   if ((error=
        mysql_thread_create(key_thread_signal_hand,
                            &signal_thread_id, &thr_attr, signal_hand, 0)))
@@ -1700,6 +1707,7 @@ static void start_signal_handler()
 
 /** This thread handles SIGTERM, SIGQUIT and SIGHUP signals. */
 /* ARGSUSED */
+// flyyear 信号处理线程的回掉函数
 extern "C" void *signal_hand(void *arg MY_ATTRIBUTE((unused)))
 {
   my_thread_init();
@@ -1750,6 +1758,7 @@ extern "C" void *signal_hand(void *arg MY_ATTRIBUTE((unused)))
       DBUG_PRINT("info", ("Got signal: %d  abort_loop: %d", sig, abort_loop));
       if (!abort_loop)
       {
+        // flyyear 这面设置这个volatile变量为true
         abort_loop= true;       // Mark abort for threads.
 #ifdef HAVE_PSI_THREAD_INTERFACE
         // Delete the instrumentation for the signal thread.
@@ -4038,6 +4047,8 @@ int mysqld_main(int argc, char **argv)
 #endif
 // flyyear 接着是一些sql主要变量名及系统变量的初始化
   init_sql_statement_names();
+  // flyyear 下面初始化系统变量信息
+  // 初始化系统变量hash桶，将所有的系统变量插入到hash桶中(这里的变量为sys_vars.cc中定义的变量)
   sys_var_init();
   ulong requested_open_files;
   adjust_related_options(&requested_open_files);
@@ -4483,6 +4494,7 @@ int mysqld_main(int argc, char **argv)
   if (!opt_bootstrap)
     reload_optimizer_cost_constants();
 
+  // flyyear 这面删除临时表，初始化用户的信息, 初始时区信息, 权限信息
   if (mysql_rm_tmp_tables() || acl_init(opt_noacl) ||
       my_tz_init((THD *)0, default_tz_name, opt_bootstrap) ||
       grant_init(opt_noacl))
@@ -4551,6 +4563,7 @@ int mysqld_main(int argc, char **argv)
 
 #ifndef _WIN32
   //  Start signal handler thread.
+  //  flyyear 这面用来进行信号处理的线程
   start_signal_handler();
 #endif
 
@@ -4918,6 +4931,7 @@ void adjust_related_options(ulong *requested_open_files)
 
 vector<my_option> all_options;
 
+// flyyear 初始化需要加载的系统变量
 struct my_option my_long_early_options[]=
 {
   {"bootstrap", OPT_BOOTSTRAP, "Used by mysql installation scripts.", 0, 0, 0,

@@ -86,6 +86,21 @@ bool Connection_handler_manager::valid_connection_count()
   return connection_accepted;
 }
 
+bool Connection_handler_manager::valid_root_connection_count()
+{
+    bool connection_accepted= true;
+    mysql_mutex_lock(&LOCK_connection_count);
+    // flyyear 这面判断连接数的时候将设置的连接数+1 这样保证保留账户连接的上
+    if (connection_count > max_connections + 1)
+    {
+        connection_accepted= false;
+        m_connection_errors_max_connection++;
+    }
+    mysql_mutex_unlock(&LOCK_connection_count);
+    return connection_accepted;
+
+}
+
 // flyyear 这面进行连接数的判断,如果连接数过多会错误连接数+1
 bool Connection_handler_manager::check_and_incr_conn_count()
 {
@@ -99,6 +114,9 @@ bool Connection_handler_manager::check_and_incr_conn_count()
     checked later during authentication where valid_connection_count()
     is called for non-SUPER users only.
   */
+  // flyyear 这面允许连接数+1的连接个数连接进来
+  // 最后一个连接的必须要SUPER权限的用户才可以连接进来，这个SUPER权限的用户限制在
+  // sql_authentication.cc文件中
   if (connection_count > max_connections)
   {
     connection_accepted= false;
@@ -264,6 +282,7 @@ Connection_handler_manager::process_new_connection(Channel_info* channel_info)
     // 这个缓存连接的数量是由thread_cache_size变量来设置的
   if (abort_loop || !check_and_incr_conn_count())
   {
+    DBUG_PRINT("flyyear", ("in process_new_connections too many connections or force stop"));
     channel_info->send_error_and_close_channel(ER_CON_COUNT_ERROR, 0, true);
     delete channel_info;
     return;

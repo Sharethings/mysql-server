@@ -675,11 +675,16 @@ static Sys_var_ulong Sys_back_log(
        READ_ONLY GLOBAL_VAR(back_log), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(0, 65535), DEFAULT(0), BLOCK_SIZE(1));
 
+// flyyear 定义base_dir系统变量， 定义一个char*类型的系统变量
 static Sys_var_charptr Sys_basedir(
        "basedir", "Path to installation directory. All paths are "
        "usually resolved relative to this",
-       READ_ONLY GLOBAL_VAR(mysql_home_ptr), CMD_LINE(REQUIRED_ARG, 'b'),
-       IN_FS_CHARSET, DEFAULT(0));
+       READ_ONLY   // flyyear 设置变量的flag，设置为只读 #define READ_ONLY sys_var::READONLY+
+       GLOBAL_VAR(mysql_home_ptr), // flyyear 设置变量的flag，设置为global，同时设置该变量的值存放在变量mysql_home_ptr中
+                                  // define GLOBAL_VAR(A) sys_var::GLOBAL, (((char*)&(X))-(char*)&global_system_variables), sizeof(X)
+       CMD_LINE(REQUIRED_ARG, 'b'), // 设置命令行属性，指定可以使用命令行设定，同时可以使用-b来设置变量
+       IN_FS_CHARSET,             // 字符集相关属性
+       DEFAULT(0));               // 默认值
 
 static Sys_var_charptr Sys_default_authentication_plugin(
        "default_authentication_plugin", "The default authentication plugin "
@@ -5850,3 +5855,27 @@ static Sys_var_mybool Sys_keyring_operations(
        NOT_IN_BINLOG,
        ON_CHECK(check_keyring_access),
        ON_UPDATE(0));
+
+static Sys_var_udbcharptr Udb_backup_user(
+        "udb_backup_user",
+        "udb backup user name used by ucloud dba",
+        UDB GLOBAL_VAR(udb_backup_user),
+        CMD_LINE(REQUIRED_ARG),
+        IN_FS_CHARSET,
+        DEFAULT("feinian"));
+
+static Sys_var_udbcharptr Udb_backup_host(
+        "udb_backup_host",
+        "udb abckup user host by ucloud dba",
+        UDB GLOBAL_VAR(udb_backup_host),
+        CMD_LINE(REQUIRED_ARG),
+        IN_FS_CHARSET,
+        DEFAULT("localhost"));
+
+static Sys_var_udbcharptr Udb_backup_passwd(
+        "udb_backup_passwd",
+        "udb backup user passord by ucloud dba",
+        UDB GLOBAL_VAR(udb_backup_passwd),
+        CMD_LINE(REQUIRED_ARG, OPT_UDB_PASSWORD),
+        IN_FS_CHARSET,
+        DEFAULT(""));

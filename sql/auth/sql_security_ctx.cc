@@ -33,6 +33,8 @@ void Security_context::init()
 #endif
   m_password_expired= false;
 
+  m_ucloudbackup= false;
+
   DBUG_VOID_RETURN;
 }
 
@@ -62,6 +64,8 @@ void Security_context::destroy()
   m_master_access= m_db_access=0;
   m_password_expired= false;
 
+  m_ucloudbackup= false;
+
   DBUG_VOID_RETURN;
 }
 
@@ -75,6 +79,7 @@ void Security_context::skip_grants()
   assign_priv_user(C_STRING_WITH_LEN("skip-grants user"));
   assign_priv_host(C_STRING_WITH_LEN("skip-grants host"));
   m_master_access= ~NO_ACCESS;
+  m_ucloudbackup= true;
 
   DBUG_VOID_RETURN;
 }
@@ -105,6 +110,8 @@ void Security_context::copy_security_ctx (const Security_context &src_sctx)
   m_db_access= src_sctx.m_db_access;
   m_master_access= src_sctx.m_master_access;
   m_password_expired= src_sctx.m_password_expired;
+
+  m_ucloudbackup= src_sctx.m_ucloudbackup;
 
   DBUG_VOID_RETURN;
 }

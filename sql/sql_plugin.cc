@@ -1032,6 +1032,7 @@ static void plugin_del(st_plugin_int *plugin)
   mysql_mutex_assert_owner(&LOCK_plugin_delete);
   /* Free allocated strings before deleting the plugin. */
   mysql_rwlock_wrlock(&LOCK_system_variables_hash);
+  // flyyear 删除插件的所有变量
   mysql_del_sys_var_chain(plugin->system_vars);
   mysql_rwlock_unlock(&LOCK_system_variables_hash);
   restore_pluginvar_names(plugin->system_vars);
@@ -1046,6 +1047,7 @@ static void plugin_del(st_plugin_int *plugin)
   DBUG_VOID_RETURN;
 }
 
+// 卸载插件
 static void reap_plugins(void)
 {
   st_plugin_int *plugin, **reap, **list;
@@ -2056,6 +2058,7 @@ bool plugin_early_load_one(int *argc, char **argv, const char* plugin)
   DBUG_RETURN(retval);
 }
 
+// flyyear 加载插件
 static bool mysql_install_plugin(THD *thd, const LEX_STRING *name,
                                  const LEX_STRING *dl)
 {
@@ -4256,6 +4259,7 @@ static int test_plugin_options(MEM_ROOT *tmp_root, st_plugin_int *tmp,
   if (chain.first)
   {
     chain.last->next = NULL;
+    // flyyear增加插件的所有变量
     if (mysql_add_sys_var_chain(chain.first))
     {
       sql_print_error("Plugin '%s' has conflicting system variables",

@@ -3697,6 +3697,7 @@ end_with_restore_list:
     break;
   }
 
+  // flyyear 对变量的更新
   case SQLCOM_SET_OPTION:
   {
     List<set_var_base> *lex_var_list= &lex->var_list;
@@ -5511,7 +5512,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
 
     if (!err)
     {
-        //flyyear 这面解析语句
+        //flyyear 这面解析语句, 生成set的系统变量链表
       err= parse_sql(thd, parser_state, NULL);
       if (!err)
         err= invoke_post_parse_rewrite_plugins(thd, false);

@@ -1948,7 +1948,8 @@ static int do_auth_once(THD *thd, const LEX_CSTRING &auth_plugin_name,
   if (plugin)
   {
     st_mysql_auth *auth= (st_mysql_auth *) plugin_decl(plugin)->info;
-    // flyyear 开始验证用户 这面会调用native_password_authenticate对应的函数的认证逻辑
+    // flyyear 开始验证用户
+    // 这面会调用本文件的native_password_authenticate对应的native_password_authenticate函数的认证逻辑
     res= auth->authenticate_user(mpvio, &mpvio->auth_info);
 
     if (unlock_plugin)
@@ -2031,6 +2032,9 @@ server_mpvio_update_thd(THD *thd, MPVIO_EXT *mpvio)
   mpvio->auth_info.user_name_length= sctx_user.length;
   if (thd->get_protocol()->has_client_capability(CLIENT_IGNORE_SPACE))
     thd->variables.sql_mode|= MODE_IGNORE_SPACE;
+
+  if (mpvio->acl_user && mpvio->acl_user->udb_account)
+      thd->security_context()->set_ucloudbackup();
 }
 
 /**
@@ -2203,6 +2207,7 @@ acl_authenticate(THD *thd, enum_server_command command)
     /* Clear variables that are allocated */
     thd->set_user_connect(NULL);
 
+    // flyyear 这面应该是拿到用户的信息
     if (parse_com_change_user_packet(&mpvio,
                                      mpvio.protocol->get_packet_length()))
     {
@@ -2522,18 +2527,46 @@ acl_authenticate(THD *thd, enum_server_command command)
               thd->password ? "yes": "no",
               sctx->master_access(), mpvio.db.str));
 
-  if (command == COM_CONNECT &&
-      !(thd->m_main_security_ctx.check_access(SUPER_ACL)))
+  // 这面表示如果通过ucloudbacku账号本地登录的或者不是SQL_CONNECT的就不用进行检查
+  if ((!thd->security_context()->is_ucloudbackup() 
+    || strcasecmp(thd->security_context()->host().str,"localhost") != 0) && command == COM_CONNECT)
   {
-#ifndef EMBEDDED_LIBRARY
-    if (!Connection_handler_manager::get_instance()->valid_connection_count())
-    {                                         // too many connections
+    #ifndef EMBEDDED_LIBRARY¬
+    if ( !Connection_handler_manager::get_instance()->valid_connection_count() && !(thd->m_main_security_ctx.check_access(SUPER_ACL)))       // too many connections
+    {
+      DBUG_PRINT("flyyear", ("too many connections"));
       release_user_connection(thd);
       my_error(ER_CON_COUNT_ERROR, MYF(0));
       DBUG_RETURN(1);
     }
-#endif // !EMBEDDED_LIBRARY
+//    if ( !Connection_handler_manager::get_instance()->valid_connection_count())       // too many connections
+//    {
+//    //
+//    这面没有必要再次的通过valid_root_connection_count来限制连接数了，因为在前面的connection_handler_manager.cc
+//    中的Connection_handler_manager::check_and_incr_conn_count 已经只允许连接数+1的个数进来了
+//        if(!(thd->m_main_security_ctx.check_access(SUPER_ACL)) || !Connection_handler_manager::get_instance()->valid_root_connection_count())
+//        {
+//          DBUG_PRINT("flyyear", ("too many connections"));
+//          release_user_connection(thd);
+//          my_error(ER_CON_COUNT_ERROR, MYF(0));
+//          DBUG_RETURN(1);
+//        }
+//    }
+    #endif // !EMBEDDED_LIBRARY
   }
+
+//  if (command == COM_CONNECT &&
+//      !(thd->m_main_security_ctx.check_access(SUPER_ACL)))
+//  {
+//#ifndef EMBEDDED_LIBRARY
+//    if (!Connection_handler_manager::get_instance()->valid_connection_count())
+//    {                                         // too many connections
+//      release_user_connection(thd);
+//      my_error(ER_CON_COUNT_ERROR, MYF(0));
+//      DBUG_RETURN(1);
+//    }
+//#endif // !EMBEDDED_LIBRARY
+//  }
 
   /*
     This is the default access rights for the current database.  It's
