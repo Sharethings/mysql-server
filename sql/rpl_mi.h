@@ -275,6 +275,8 @@ public:
      clock_of_slave - last_timestamp_executed_by_SQL_thread - clock_diff_with_master
 
   */
+  // flyyear io线程启动时候会向主库发送SELECT
+  // UNIX_TIMESTAMP()，获取主库当前的时间，然后备库当前时间减去此时间
   long clock_diff_with_master;
   float heartbeat_period;         // interface with CHANGE MASTER or master.info
   ulonglong received_heartbeats;  // counter of received heartbeat events

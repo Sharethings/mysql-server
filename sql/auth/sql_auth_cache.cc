@@ -1507,7 +1507,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   init_sql_alloc(key_memory_acl_mem,
                  &global_acl_memory, ACL_ALLOC_BLOCK_SIZE, 0);
 
-  // flyyear 检查udb的账号是否存在
+  // flyyear 因为此变量和系统变量里面的udb_backup_user相对应，这面其实查看的是有没有添加这个系统变量
   if(udb_backup_user && strlen(udb_backup_user))
   {
       udb_exist= true;
@@ -1531,6 +1531,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   /*
     Prepare reading from the mysql.user table
   */
+  // flyyear 从mysql.user表读取账户信息
   if (init_read_record(&read_record_info, thd, table=tables[0].table,
                        NULL, 1, 1, FALSE))
     goto end;

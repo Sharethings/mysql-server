@@ -137,7 +137,7 @@ int ActiveTranx::compare(const char *log_file_name1, my_off_t log_file_pos1,
 // 将该事务的位点信息存储到active_tranxs中（active_tranxs_->insert_tranx_node(log_file_name,
 // log_file_pos)），这是一个链表，用来存储所有活跃的事务的位点信息，每个新加的节点都能保证位点在已有节点之后；另外还维持了一个key->value的数组，数组下标即为事务binlog坐标计算的hash，值为相同hash值的链表
 // 这些操作都在锁LOCK_binlog_的保护下进行的,
-// 即使semisync退化成同步状态，也会继续更新位点（但不写事务节点），主要是为了监控后续SLAVE时候能够跟上当前的事务Bilog状态
+// 即使semisync退化成异步复制，也会继续更新位点（但不写事务节点），主要是为了监控后续SLAVE时候能够跟上当前的事务Bilog状态
 int ActiveTranx::insert_tranx_node(const char *log_file_name,
 				   my_off_t log_file_pos)
 {

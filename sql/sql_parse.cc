@@ -3429,6 +3429,7 @@ end_with_restore_list:
     break;
   }
 
+  // flyyear 再从库上面执行start slave 命令，解析出来后的语句就是这个
   case SQLCOM_SLAVE_START:
   {
       // flyyear 启动一个从库，命令会发送到这面

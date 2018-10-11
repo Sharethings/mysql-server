@@ -381,6 +381,7 @@ inline my_off_t Binlog_sender::get_binlog_end_pos(IO_CACHE *log_cache)
   // flyyear 下面是一个do while循环一直等待binlog的更新
   do
   {
+    // flyyear 因为是一个所有的dump线程共享一个全局的mysql_bin_log，所以这面需要加锁
     mysql_bin_log.lock_binlog_end_pos();
     end_pos= mysql_bin_log.get_binlog_end_pos();
     mysql_bin_log.unlock_binlog_end_pos();
@@ -477,6 +478,7 @@ int Binlog_sender::send_events(IO_CACHE *log_cache, my_off_t end_pos)
       DBUG_ASSERT(now >= m_last_event_sent_ts);
       bool time_for_hb_event= ((ulonglong)(now - m_last_event_sent_ts)
                           >= (ulonglong)(m_heartbeat_period/1000000000UL));
+      // flyyear 如果时间超过了所需要等待的时间，就发送heartbeat_event
       if (time_for_hb_event)
       {
         if (unlikely(send_heartbeat_event(log_pos)))
@@ -664,15 +666,17 @@ inline int Binlog_sender::wait_with_heartbeat(my_off_t log_pos)
   {
     set_timespec_nsec(&ts, m_heartbeat_period);
     ret= mysql_bin_log.wait_for_update_bin_log(m_thd, &ts);
+    // flyyear 如果wait的结果是binlog没有更新，则继续等待，否则跳出死循环
     if (ret != ETIMEDOUT && ret != ETIME)
       break;
 
 #ifndef DBUG_OFF
-      if (hb_info_counter < 3)
+    // flyyear 如果打开了dbug，那么heartbeat_log_event 只写日志general_log 3次
+      if (hb_info_counter < 10)
       {
         sql_print_information("master sends heartbeat message");
         hb_info_counter++;
-        if (hb_info_counter == 3)
+        if (hb_info_counter == 10)
           sql_print_information("the rest of heartbeat info skipped ...");
       }
 #endif
@@ -1159,6 +1163,7 @@ read_error:
   DBUG_RETURN(1);
 }
 
+// flyyear 发送heartbeat事件
 int Binlog_sender::send_heartbeat_event(my_off_t log_pos)
 {
   DBUG_ENTER("send_heartbeat_event");

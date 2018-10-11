@@ -1423,6 +1423,7 @@ inline_mysql_file_sync(
   }
 #endif
 
+  // flyyear 调用fsync()将数据刷新到磁盘里面
   result= my_sync(fd, flags);
   return result;
 }

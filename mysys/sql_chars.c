@@ -50,6 +50,7 @@ void hint_lex_init_maps(charset_info_st *cs,
 }
 
 
+// flyyear 初始化cs的集合
 my_bool init_state_maps(charset_info_st *cs)
 {
   uint i;
@@ -71,6 +72,7 @@ my_bool init_state_maps(charset_info_st *cs)
   hint_lex_init_maps(cs, lex_state_maps->hint_map);
 
   /* Fill state_map with states to get a faster parser */
+  // flyyear 遍历256个ascii
   for (i=0; i < 256 ; i++)
   {
     if (my_isalpha(cs,i))
@@ -85,6 +87,7 @@ my_bool init_state_maps(charset_info_st *cs)
     else
       state_map[i]= MY_LEX_CHAR;
   }
+  // flyyear 下面是对特殊字符的处理
   state_map[(uchar)'_']=state_map[(uchar)'$']= MY_LEX_IDENT;
   state_map[(uchar)'\'']= MY_LEX_STRING;
   state_map[(uchar)'.']= MY_LEX_REAL_OR_POINT;

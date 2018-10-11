@@ -249,6 +249,7 @@ typedef struct Server_state_param {
 /**
   Observer server state
  */
+// flyyear 主库状态观察者
 typedef struct Server_state_observer {
   uint32 len;
 

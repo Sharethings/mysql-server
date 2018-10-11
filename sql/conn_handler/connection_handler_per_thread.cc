@@ -170,7 +170,7 @@ Channel_info* Per_thread_connection_handler::block_until_new_connection()
   @retval NULL   Initialization failed.
   @retval !NULL  Pointer to new THD object for the new connection.
 */
-
+// flyyear 为新的连接构造函数和初始化一个THD对象
 static THD* init_new_thd(Channel_info *channel_info)
 {
   THD *thd= channel_info->create_thd();
@@ -338,6 +338,7 @@ extern "C" void *handle_connection(void *arg)
     if (abort_loop) // Server is shutting down so end the pthread.
       break;
 
+    // flyyear 判断是否可以复用thread线程
     channel_info= Per_thread_connection_handler::block_until_new_connection();
     if (channel_info == NULL)
       break;
@@ -374,12 +375,17 @@ void Per_thread_connection_handler::kill_blocked_pthreads()
 }
 
 
+// flyyear 从连接的队列里面取连接
 bool Per_thread_connection_handler::check_idle_thread_and_enqueue_connection(
                                                   Channel_info* channel_info)
 {
   bool res= true;
 
   mysql_mutex_lock(&LOCK_thread_cache);
+  // flyyear blocked_pthread_count表示缓存的线程数
+  // wake_pthread运行中的线程数
+  // 如果blocked_pthread_count>wake_pthread表示缓存中还有剩余的线程，将其加入到waiting_channel_info_list，
+  // 并且通过条件变量唤醒一个缓存中的线程
   if (Per_thread_connection_handler::blocked_pthread_count > wake_pthread)
   {
     DBUG_PRINT("info",("waiting_channel_info_list->push %p", channel_info));

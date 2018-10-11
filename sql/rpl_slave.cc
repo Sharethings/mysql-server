@@ -3749,6 +3749,7 @@ bool show_slave_status_send_data(THD *thd, Master_info *mi,
        print NULL;
   */
 
+  // flyyear 下面计算从库落后的时间点 second_behind_master
   if (mi->rli->slave_running)
   {
     /*
@@ -8338,6 +8339,10 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
   }
   break;
 
+  // flyyear
+  // 主库没有更新的时候，每隔master_heartbeat_period时间都发送此事件保持主库与备库的连接,这类事件不会出现在binlog和relaylog中.
+  // master通过dump线程发送给从库,从库收到后，slave收到后，校验事件内容后，直接抛弃这个事件，而不会写到relaylog中
+  // HEARTBEAT_LOG_EVENT另一个作用是，在gtid模式下，主库有些gtid备库已经执行同时，这些事件虽然不需要再备库执行，但读取和应用binglog的位点还是要推进。因此，这里将这类event转化为HEARTBEAT_LOG_EVENT，由HEARTBEAT_LOG_EVENT帮助我们推进位点
   case binary_log::HEARTBEAT_LOG_EVENT:
   {
     /*
@@ -8377,6 +8382,8 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
       we update only the positions and not the file names, as a ROTATE
       EVENT from the master prior to this will update the file name.
     */
+    // flyyear
+    // HEARTBEAT_LOG_EVENT的位点大于当前记录的位点时，会构建一个ROTATE_EVENT,从而让sql线程推进位点信息
     if (mi->is_auto_position()  && mi->get_master_log_pos() <
        hb.common_header->log_pos &&  mi->get_master_log_name() != NULL)
     {
@@ -8394,6 +8401,7 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
              FN_REFLEN);
       rli->ign_master_log_pos_end = mi->get_master_log_pos();
 
+      // flyyear 构建一个ROTATE_EVENT, 从而让sql线程推进位点信息
       if (write_ignored_events_info_to_relay_log(mi->info_thd, mi))
         goto end;
     }

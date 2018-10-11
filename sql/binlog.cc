@@ -77,6 +77,8 @@ const char *log_bin_index= 0;
 const char *log_bin_basename= 0;
 
 // flyyear 定义一个全局变量mysql_bin_log
+// 这面是全局变量，每一个mysql实例只会有一个，所以后面的通过dump线程发给binlog给从库日志。多个dump线程会共享
+// 这个变量里面的值
 MYSQL_BIN_LOG mysql_bin_log(&sync_binlog_period, WRITE_CACHE);
 
 static int binlog_init(void *p);
@@ -2744,6 +2746,7 @@ File open_binlog_file(IO_CACHE *log, const char *log_file_name, const char **err
     *errmsg = "Could not open log file";
     goto err;
   }
+  // flyyear 检验文件头的magic number "\xfe\x62\x69\x6e"
   if (check_binlog_magic(log,errmsg))
     goto err;
   DBUG_RETURN(file);
@@ -4775,7 +4778,8 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
 
   if (init_and_set_log_file_name(log_name, new_name))
   {
-    sql_print_error("MYSQL_BIN_LOG::open failed to generate new file name.");
+    
+    // flyyear 确保index文件初始化成功sql_print_error("MYSQL_BIN_LOG::open failed to generate new file name.");
     DBUG_RETURN(1);
   }
 
@@ -4840,6 +4844,7 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
 #endif
   Format_description_log_event s(BINLOG_VERSION);
 
+  // flyyear 确保index文件初始化成功
   if (!my_b_filelength(&log_file))
   {
     /*
@@ -4848,6 +4853,8 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
       an extension for the binary log files.
       In this case we write a standard header to it.
     */
+    // flyyear 说明binlog文件是空的，有可能是新创建的binlog文件
+    // 先向这个binlog文件中写入魔法数字等内容
     if (my_b_safe_write(&log_file, (uchar*) BINLOG_MAGIC,
                         BIN_LOG_HEADER_SIZE))
       goto err;
@@ -4864,6 +4871,7 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
     s.common_header->flags|= LOG_EVENT_BINLOG_IN_USE_F;
   }
 
+  // flyyear 判断是relaylog还是binlog，说明这两者的内容都是一样的
   if (is_relay_log)
   {
     /* relay-log */
@@ -7901,8 +7909,7 @@ int MYSQL_BIN_LOG::wait_for_update_bin_log(THD* thd,
 {
   int ret= 0;
   DBUG_ENTER("wait_for_update_bin_log");
-// flyyear timeout的用处是如果有值则会调用带timedwait的条件变量函数等待
-// 当有binlog更新时,会给条件变量发送信号，然后执行
+// flyyear timeout的用处是如果有值则会调用带timedwait的条件变量函数等待条件变量的更新 因为 当有binlog更新时,会给条件变量发送信号，然后执行
   if (!timeout)
     mysql_cond_wait(&update_cond, &LOCK_binlog_end_pos);
   else
@@ -8087,6 +8094,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
   DBUG_ASSERT(total_ha_2pc > 1 || (1 == total_ha_2pc && opt_bin_log));
   DBUG_ASSERT(opt_name && opt_name[0]);
 
+  // flyyear 确保index文件初始化成功
   if (!my_b_inited(&index_file))
   {
     /* There was a failure to open the index file, can't open the binlog */
@@ -8145,6 +8153,9 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
     }
 
     // flyyear 打开最后一个binlog
+    // 这面会检查文件头的magic number "\xfe\x62\x69\x6e"
+    // 如果magic number校验失败，会直接报错退出，无法完成recovery
+    // 如果确定最后一个binlog没有内容，可以删除binlog文件再重试
     if ((file= open_binlog_file(&log, log_name, &errmsg)) < 0)
     {
       sql_print_error("%s", errmsg);
@@ -8172,6 +8183,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
     // 收集日志的XIDS
     // 完成2PC
     // 收集最后正确的位置
+    // 因此我们需要遍历binlog文件，找到最后一个合法的event集合，并purge无效的binlog
 
     // 开始读取event
     if ((ev= Log_event::read_log_event(&log, 0, &fdle,
@@ -8493,8 +8505,7 @@ TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
     else if (real_trans && xid && trn_ctx->rw_ha_count(trx_scope) > 1 &&
              !trn_ctx->no_2pc(trx_scope))
     {
-     // flyyear 这个从网上搞到的，没有验证
-     // 现在binlog层加一个Xid_log_event类型的日志作为XA事务在binlog层提交的标志
+     // flyyear 现在binlog层加一个Xid_log_event类型的日志作为XA事务在binlog层提交的标志
       Xid_log_event end_evt(thd, xid);
       if (cache_mngr->trx_cache.finalize(thd, &end_evt))
         DBUG_RETURN(RESULT_ABORTED);
@@ -9227,7 +9238,7 @@ void MYSQL_BIN_LOG::handle_binlog_flush_or_sync_error(THD *thd,
 // 处理步骤如下：
 // 1. 将binlog数据刷写到文件中
 // 2. 将当前的binlog文件名和位点注册到semisync模块中，以便后面等待备机的回复
-// 3. 调用函数MYSQL_BIN_LOG::sync_binlog_file()将binlog文件sync到磁盘，到这里事务将不能回滚，即使mysqld崩溃了事务也会最终提交
+// 3. 调用函数MYSQL_BIN_LOG::sync_binlog_file()将binlog文件sync到磁盘，到这里事务将不能回滚，即使mysqld崩溃了事务也会最终提交,因为当binlog刷新到磁盘后,即使宕机了，数据恢复的时候也会根据binlog如果有的事务直接redolog里面commit
 // 4. 调用MYSQL_BIN_LOG::update_binlog_end_pos()更新binlog最后sync的位点信息，这时为备库复制服务的binlog_dump线程才可以读到这个事务,可以参考Log_event::read_log_event()
 // 5. 如果semisync模块配置了rpl_semi_sync_master_wait_point为after_sync,那么当前session将在这里等待备机回复在继续
 // 6. ordered_commit()接下来会最终调用ha_commit_low()在存储引擎层提交

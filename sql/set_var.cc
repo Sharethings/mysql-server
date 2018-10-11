@@ -742,7 +742,7 @@ int set_var::check(THD *thd)
 
   if (var->is_udb()) {
     if(!thd->security_context()->is_ucloudbackup()) {
-      my_error(ER_UDB_SET_PRIVATE_VARIABLES, MYF(0), var->name.str);
+      //my_error(ER_UDB_SET_PRIVATE_VARIABLES, MYF(0), var->name.str);
       DBUG_RETURN(-1);
     }
   }

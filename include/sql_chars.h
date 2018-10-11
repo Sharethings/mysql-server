@@ -24,6 +24,7 @@
 
 #include "my_global.h"
 
+// flyyear 这面定义词法解析的状态
 enum MY_ATTRIBUTE((__packed__)) my_lex_states
 {
   MY_LEX_START, MY_LEX_CHAR, MY_LEX_IDENT,

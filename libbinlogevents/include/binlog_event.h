@@ -251,7 +251,7 @@ enum Log_event_type
   */
   UNKNOWN_EVENT= 0,
   START_EVENT_V3= 1,
-  QUERY_EVENT= 2,
+  QUERY_EVENT= 2, // flyyear 与statement模式处理相同，存储的是SQL，主要是一些与数据无关的操作，eg:begin、drop table
   STOP_EVENT= 3,
   ROTATE_EVENT= 4,
   INTVAR_EVENT= 5,
@@ -270,10 +270,11 @@ enum Log_event_type
   RAND_EVENT= 13,
   USER_VAR_EVENT= 14,
   FORMAT_DESCRIPTION_EVENT= 15,
-  XID_EVENT= 16,
+  XID_EVENT= 16, // flyyear 用于标识事务提交
   BEGIN_LOAD_QUERY_EVENT= 17,
   EXECUTE_LOAD_QUERY_EVENT= 18,
 
+  // flyyear 用于row-basesd的event 记录下一条事件所对应的表信息，在其中存储了数据库名和表名
   TABLE_MAP_EVENT = 19,
 
   /**
@@ -300,6 +301,7 @@ enum Log_event_type
     Heartbeat event to be send by master at its idle time
     to ensure master's online status to slave
   */
+  // flyyear 主库告诉从库我还活着
   HEARTBEAT_LOG_EVENT= 27,
 
   /**
@@ -312,9 +314,17 @@ enum Log_event_type
   ROWS_QUERY_LOG_EVENT= 29,
 
   /** Version 2 of the Row events */
-  WRITE_ROWS_EVENT = 30,
-  UPDATE_ROWS_EVENT = 31,
-  DELETE_ROWS_EVENT = 32,
+  // flyyear 下面三个是用来给row-based binlog的event
+  WRITE_ROWS_EVENT = 30, // insert
+  UPDATE_ROWS_EVENT = 31, // update
+  DELETE_ROWS_EVENT = 32, // delete
+  /* flyyear
+   * 一条insert语句，包含4个事件
+   * QUERY_EVENT(begin)
+   * TABLE_MAP_EVENT
+   * WRITE_ROWS_EVENT
+   * XID_EVENT(commit)
+   * */
 
   GTID_LOG_EVENT= 33,
   ANONYMOUS_GTID_LOG_EVENT= 34,

@@ -727,6 +727,7 @@ uint my_mbcharlen_ptr(const CHARSET_INFO *cs, const char *s, const char *e);
 #define my_toprint(c)	((c) | 64)
 #define my_toupper(s,c)	(char) ((s)->to_upper[(uchar) (c)])
 #define my_tolower(s,c)	(char) ((s)->to_lower[(uchar) (c)])
+// flyyear 这面根据位运算算出对应的Ascii位什么类型的值
 #define	my_isalpha(s, c)  (((s)->ctype+1)[(uchar) (c)] & (_MY_U | _MY_L))
 #define	my_isupper(s, c)  (((s)->ctype+1)[(uchar) (c)] & _MY_U)
 #define	my_islower(s, c)  (((s)->ctype+1)[(uchar) (c)] & _MY_L)

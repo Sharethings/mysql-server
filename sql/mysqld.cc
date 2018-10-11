@@ -3385,6 +3385,7 @@ static int init_server_components()
     We need to call each of these following functions to ensure that
     all things are initialized so that unireg_abort() doesn't fail
   */
+  // flyyear mdl锁 元数据锁，防止多个事务对表结构进行操作
   mdl_init();
   partitioning_init();
   if (table_def_init() | hostname_cache_init(host_cache_size))
@@ -4308,6 +4309,7 @@ int mysqld_main(int argc, char **argv)
    Thus set the long running service control manager timeout
   */
 
+  // flyyear 这一模块需要长时间，初始化服务器的一些模块，比如binlog的crash recovery
   if (init_server_components())
     unireg_abort(MYSQLD_ABORT_EXIT);
 
@@ -4536,7 +4538,7 @@ int mysqld_main(int argc, char **argv)
       init_slave() must be called after the thread keys are created.
     */
     // flyyear 初始化从库的相关信息
-    // 因为server_id为0，意思是不允许从库的连接,也不允许作为任何db的从库
+    // 因为server_id为0，意思是不允许从库的连接,也不允许作为任何db的从库, 意思就是不掺合主从这一块
     if (server_id != 0)
       init_slave(); /* Ignoring errors while configuring replication. */
   }
@@ -7706,6 +7708,7 @@ static int test_if_case_insensitive(const char *dir_name)
 /**
   Create file to store pid number.
 */
+// flyyear 创建mysqld.pid文件
 static void create_pid_file()
 {
   File file;
