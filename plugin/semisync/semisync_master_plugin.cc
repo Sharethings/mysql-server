@@ -178,7 +178,7 @@ int repl_semi_binlog_dump_end(Binlog_transmit_param *param)
                         param->server_id);
   if (semi_sync_slave)
   {
-      // flyyear 从ac_receiver中移除该从库信息
+      // flyyear 从ack_receiver中移除该从库信息
     ack_receiver.remove_slave(current_thd);
     /* One less semi-sync slave */
     // flyyear 备库连接个数-1

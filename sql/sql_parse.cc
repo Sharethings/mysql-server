@@ -1468,6 +1468,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
       break;
 
     // flyyear  这面开始进行parse
+    // parse直接执行了
     mysql_parse(thd, &parser_state);
 
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
@@ -5038,6 +5039,12 @@ finish:
     if (thd->killed_errno())
       thd->send_kill_message();
     // flyyear 这面如果执行命令出现问题，将进行回滚
+    // sayidzhang
+    // 语句执行到最后，都会执行trans_rollback_stmt或者trans_commit_stmt，这两个调用都是语句级的。
+    // 语句级的提交，对于非自动模式提交情况下，主要做两件事情：
+    // 1.
+    // 释放autoinc锁，这个锁主要是用来处理多个事务互斥的获取自增列值，因此无论最后该语句提交或者回滚，该资源都是要立马释放掉的。
+    // 2. 标识语句在事务中的位置，方便语句级回滚
     if (thd->is_error() || (thd->variables.option_bits & OPTION_MASTER_SQL_ERROR))
       trans_rollback_stmt(thd);
     else

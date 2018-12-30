@@ -43,6 +43,7 @@
 #include "rpl_tblmap.h"              // table_mapping
 #include "sql_const.h"               // MAX_TIME_ZONE_NAME_LENGTH
 #include "sql_list.h"                // I_List
+#include "sql_string.h"
 #endif
 
 #include <list>
@@ -344,7 +345,7 @@ enum enum_base64_output_mode {
   BASE64_OUTPUT_UNSPEC= 2,
   BASE64_OUTPUT_DECODE_ROWS= 3,
   /* insert new output modes here */
-  BASE64_OUTPUT_MODE_COUNT
+  
 };
 
 /*
@@ -800,6 +801,17 @@ public:
                     bool is_more);
 #endif // ifdef MYSQL_SERVER ... else
 
+  /* Flashback*/
+  my_bool is_flashback;
+  my_bool is_only_print_info;
+  String output_buf;
+
+  void free_output_buffer()
+  {
+    if (!output_buf.is_empty()) 
+      output_buf.mem_free();
+  }
+
   void *operator new(size_t size);
 
   static void operator delete(void *ptr, size_t)
@@ -919,7 +931,14 @@ public:
   Log_event(Log_event_header *header,
             Log_event_footer *footer);
 
-  virtual ~Log_event() { free_temp_buf(); }
+  //virtual ~Log_event() { free_temp_buf(); }
+  virtual ~Log_event()
+  {
+    free_temp_buf();
+#ifdef MYSQL_CLIENT
+    free_output_buffer();
+#endif
+  }
   void register_temp_buf(char* buf) { temp_buf = buf; }
   void free_temp_buf()
   {
@@ -2956,10 +2975,13 @@ public:
   virtual void print(FILE *file, PRINT_EVENT_INFO *print_event_info)= 0;
   void print_verbose(IO_CACHE *file,
                      PRINT_EVENT_INFO *print_event_info);
+  /* Flashback */
+  void exchange_update_rows(PRINT_EVENT_INFO *print_event_info, uchar *rows_buff);
   size_t print_verbose_one_row(IO_CACHE *file, table_def *td,
                                PRINT_EVENT_INFO *print_event_info,
                                MY_BITMAP *cols_bitmap,
-                               const uchar *ptr, const uchar *prefix);
+                               const uchar *ptr, const uchar *prefix,
+                               const my_bool only_parse=0);
 #endif
 
 #ifdef MYSQL_SERVER
@@ -3096,6 +3118,7 @@ protected:
   uchar    *m_rows_buf;		/* The rows in packed format */
   uchar    *m_rows_cur;		/* One-after the end of the data */
   uchar    *m_rows_end;		/* One-after the end of the allocated space */
+  size_t   m_rows_buf_offset; /* The length before m_rows_buf, for Flashback */
 
 
   /* helper functions */
@@ -3888,7 +3911,12 @@ public:
 #endif
 };
 
-
+/* Flashback */
+static inline char *copy_event_cache_to_string_and_reinit(IO_CACHE *cache,
+                                                          size_t *bytes_in_cache)
+{
+  return my_b_copy_to_string(cache, bytes_in_cache);
+}
 
 static inline bool copy_event_cache_to_file_and_reinit(IO_CACHE *cache,
                                                        FILE *file,

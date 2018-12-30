@@ -1797,6 +1797,7 @@ int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock)
     xid_state->set_state(XID_STATE::XA_PREPARED);
   }
   // flyyear 提交事务
+  // sayidzhang 这面调用的commit应该是binlog.cc 里面的commit函数
   if (error || (error= tc_log->commit(thd, all)))
   {
     ha_rollback_trans(thd, all);
