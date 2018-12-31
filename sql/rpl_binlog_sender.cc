@@ -231,6 +231,7 @@ void Binlog_sender::run()
       break;
 
     /* Will go to next file, need to copy log file name */
+    // sayidzhang 将文件名赋值给上一次的文件名
     set_last_file(log_file);
 
     THD_STAGE_INFO(m_thd,
@@ -278,6 +279,7 @@ void Binlog_sender::run()
     mysql_file_close(file, MYF(MY_WME));
     file= -1;
   }
+  // sayidzhang 跳出上面的循环，说明日志发送有问题,或者线程备kill掉
 
   THD_STAGE_INFO(m_thd, stage_waiting_to_finalize_termination);
   char error_text[MAX_SLAVE_ERRMSG];
@@ -317,7 +319,7 @@ void Binlog_sender::run()
   DBUG_VOID_RETURN;
 }
 
-// flyyear 发送binlog
+// flyyear 发送binlog, 并且指明起始点
 my_off_t Binlog_sender::send_binlog(IO_CACHE *log_cache, my_off_t start_pos)
 {
   if (unlikely(send_format_description_event(log_cache, start_pos)))
@@ -349,7 +351,7 @@ my_off_t Binlog_sender::send_binlog(IO_CACHE *log_cache, my_off_t start_pos)
   {
     my_off_t end_pos;
 
-    // flyyear 得到binlog的最后的位置点
+    // flyyear 得到binlog的最后的位置点, 如果得到了，就说明主库的binlog文件更新了或者程序执行出错了，要不然会一直卡着
     end_pos= get_binlog_end_pos(log_cache);
     if (end_pos <= 1)
       return end_pos;

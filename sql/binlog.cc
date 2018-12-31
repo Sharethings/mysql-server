@@ -79,6 +79,7 @@ const char *log_bin_basename= 0;
 // flyyear 定义一个全局变量mysql_bin_log
 // 这面是全局变量，每一个mysql实例只会有一个，所以后面的通过dump线程发给binlog给从库日志。多个dump线程会共享
 // 这个变量里面的值
+// sayidzhang 即多个Binlog_sender类共用这个mysql_bin_log
 MYSQL_BIN_LOG mysql_bin_log(&sync_binlog_period, WRITE_CACHE);
 
 static int binlog_init(void *p);

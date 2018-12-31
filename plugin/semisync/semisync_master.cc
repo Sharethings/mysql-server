@@ -35,7 +35,10 @@ unsigned long rpl_semi_sync_master_no_transactions  = 0;
 unsigned long rpl_semi_sync_master_off_times        = 0;
 unsigned long rpl_semi_sync_master_timefunc_fails   = 0;
 unsigned long rpl_semi_sync_master_wait_timeouts     = 0;
+// sayidzhang 表示有多少会话在等待半同步的ack信息
 unsigned long rpl_semi_sync_master_wait_sessions    = 0;
+// sayidzhang
+// 等待从库的ack的位置点小于之前的，而进行调整的次数,这种情况在关闭binlog_order_commit的情况下可能会出现
 unsigned long rpl_semi_sync_master_wait_pos_backtraverse = 0;
 unsigned long rpl_semi_sync_master_avg_trx_wait_time = 0;
 unsigned long long rpl_semi_sync_master_trx_wait_num = 0;
@@ -44,6 +47,9 @@ unsigned long long rpl_semi_sync_master_net_wait_num = 0;
 unsigned long rpl_semi_sync_master_clients          = 0;
 unsigned long long rpl_semi_sync_master_net_wait_time = 0;
 unsigned long long rpl_semi_sync_master_trx_wait_time = 0;
+// sayidzhang
+// 默认打开， 这个变量的意思是
+// 当正常的主从关系运行过程中，有一个从库挂掉了，这时候rpl_semi_sync_master_clients的个数如果小于了rpl_semi_sync_master_wait_for_slave_count,如果rpl_semi_sync_master_wait_no_slave开启了，就会等待rpl_semi_sync_master_wait_timeouts这么长时间后变成异步复制，如果rpl_semi_master_wait_no_slave没有开启，则会立即进入异步复制
 char rpl_semi_sync_master_wait_no_slave = 1;
 unsigned int rpl_semi_sync_master_wait_for_slave_count= 1;
 
@@ -247,6 +253,7 @@ int ActiveTranx::signal_waiting_sessions_up_to(const char *log_file_name,
   const char *kWho = "ActiveTranx::signal_waiting_sessions_up_to";
   function_enter(kWho);
 
+  // sayidzhang 这个链表肯定是根据文件名和位置进行排序的
   TranxNode* entry= trx_front_;
   int cmp= ActiveTranx::compare(entry->log_name_, entry->log_pos_, log_file_name, log_file_pos) ;
   while (entry && cmp <= 0)
@@ -505,6 +512,8 @@ int ReplSemiSyncMaster::enableMaster()
         rpl_semi_sync_master_wait_no_slave == 0) if there is no enough active
         semisync clients
       */
+      // sayidzhang 如果rpl_semi_sync_master_wait_no_slave
+      // 开启了或者现在的从库多于主库等待从库的个数，则开启半同步复制
       state_ = (rpl_semi_sync_master_wait_no_slave != 0 ||
                 (rpl_semi_sync_master_clients >=
                  rpl_semi_sync_master_wait_for_slave_count));
@@ -584,6 +593,7 @@ void ReplSemiSyncMaster::add_slave()
 
 void ReplSemiSyncMaster::remove_slave()
 {
+  // sayidzhang 这面对于操作全局变量都要先加锁
   lock();
   rpl_semi_sync_master_clients--;
 
@@ -604,6 +614,8 @@ void ReplSemiSyncMaster::remove_slave()
       {
         if (commit_file_name_inited_ && reply_file_name_inited_)
         {
+          // flyyear 比较从库确认收到的log的文件和位置，如果cmp < 0
+          // 说明主库的日志比较多，说明还有日志没有复制到从库
           int cmp = ActiveTranx::compare(reply_file_name_, reply_file_pos_ ,
                                          commit_file_name_, commit_file_pos_);
           if (cmp < 0)
@@ -626,6 +638,7 @@ bool ReplSemiSyncMaster::is_semi_sync_slave()
 }
 
 // flyyear 主库得到从库收到binlog的确认包
+// 这面的log_file_name和log_file_pos表示确认的binlog文件和位置点
 void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
                                            my_off_t log_file_pos)
 {
@@ -665,6 +678,7 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
      * slaves should catch up quickly.
      */
     // flyyear
+    // 这面的log_file_name和log_file_pos表示确认的binlog文件和位置点
     // 把dump线程接收到备库反馈的位置点信息与reply_file_name_，reply_file_pos_做对比，
     // 如果小于后者，说明已有别的备库读到更新的事务了，这时候无需更新（reply_file_name_，reply_file_pos_）
     if (cmp < 0)
@@ -694,6 +708,8 @@ void ReplSemiSyncMaster::reportReplyBinlog(const char *log_file_name,
      */
       // flyyear 若当前reply_file_name_和reply_file_pos_大于wait_file_name_,
       // wait_file_pos_，即接收到的备库反馈点信息大于等于当前等待的事务的最小位点
+      // sayidzhang 终于搞明白为什么wait_file_name_每次都要更新为最小的文件和位置点了，因为这样的话
+      // 收到的从库确认的日志的文件和位置只要大于需要等待的最小的位置点，就可以去唤醒会话了
     cmp = ActiveTranx::compare(reply_file_name_, reply_file_pos_,
                                wait_file_name_, wait_file_pos_);
     if (cmp >= 0)
@@ -858,7 +874,8 @@ int ReplSemiSyncMaster::commitTrx(const char* trx_wait_binlog_name,
           wait_file_pos_ = trx_wait_binlog_pos;
 
           // flyyear 该变量的含义是表示登记的位置小于传入的binlog位置
-          // 登记位置向后调整的次数
+          // 登记位置向后调整的次数,
+          // 这种情况下只会出现在binlog_order_commit为0时，表示事务提交的顺序和binlog的顺序不一致
           rpl_semi_sync_master_wait_pos_backtraverse++;
           if (trace_level_ & kTraceDetail)
             sql_print_information("%s: move back wait position (%s, %lu),",
@@ -1228,9 +1245,12 @@ int ReplSemiSyncMaster::writeTranxInBinlog(const char* log_file_name,
   {
     int cmp = ActiveTranx::compare(log_file_name, log_file_pos,
                                    commit_file_name_, commit_file_pos_);
+    // sayidzhang 上面比较复制到从库的位置和本机的binlog的位置，为什么复制到从库的有可能比
+    // 本机的多呢？令人费解
     if (cmp > 0)
     {
       /* This is a larger position, let's update the maximum info. */
+      // sayidzhang 这面就是直接把从库确认的日志位置赋值给本机binlog位置
       strncpy(commit_file_name_, log_file_name, FN_REFLEN-1);
       commit_file_name_[FN_REFLEN-1] = 0; /* make sure it ends properly */
       commit_file_pos_ = log_file_pos;
@@ -1312,6 +1332,7 @@ int ReplSemiSyncMaster::readSlaveReply(NET *net, uint32 server_id,
   /* We flush to make sure that the current event is sent to the network,
    * instead of being buffered in the TCP/IP stack.
    */
+  // sayidzhang 立即刷新写入到event信息到网络，就是发送过去
   if (net_flush(net))
   {
     sql_print_error("Semi-sync master failed on net_flush() "
@@ -1464,6 +1485,7 @@ int AckContainer::resize(unsigned int size, const AckInfo **ackinfo)
   if (size - 1 == m_size)
     return 0;
 
+  // sayidzhnag 这面如果设置成0，即size为0的话，m_size因为是unsigned int的，则m_size值很大
   m_size= size - 1;
   m_ack_array= NULL;
   if (m_size)

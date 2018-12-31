@@ -1336,6 +1336,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
   }
 #ifdef HAVE_REPLICATION
   // flyyear 这面是注册从库的处理
+  // sayidzhang COM_REGISTER_SLAVE消息报文是
+  // 4字节的从服务器ID
   case COM_REGISTER_SLAVE:
   {
     DBUG_PRINT("flyyear", ("in sql_parse.cc COM_REGISTER_SLAVE"));

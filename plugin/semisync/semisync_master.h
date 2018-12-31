@@ -33,6 +33,8 @@ extern PSI_stage_info stage_reading_semi_sync_ack;
 
 extern unsigned int rpl_semi_sync_master_wait_for_slave_count;
 
+// sayidzhang 等待从库ack的会话的信息
+// 这个是根据文件名和等待的位置进行排序的
 struct TranxNode {
   char             log_name_[FN_REFLEN];
   my_off_t         log_pos_;
@@ -440,6 +442,10 @@ struct AckInfo
    ack's position when a transaction is fully acknowledged, so it can wake
    up the waiting transactions.
  */
+// sayidzhang AckContainer内部存储收到的ack信息，并且当事务完全确认时告诉调用者ack的位置，
+// 因此可以唤醒等待的事务
+// 是所有收到的ack的管理器，内部有AckInfo指针m_ack_array和一个m_greatest_ack，m_ack_array大小是rpl_semi_sync_master_wait_for_slave_count-1
+// 当m_ack_array满了，新收到的ack不在m_ack_array的ack里面，则说明已经收到了rpl_semi_sync_master_wait_for_slave_count个的从库的信息，从所有的ack里面找到最小的ack，同事更新m_ack_array解决
 class AckContainer : public Trace
 {
 public:
@@ -613,11 +619,13 @@ class ReplSemiSyncMaster
   my_off_t        reply_file_pos_;
 
   /* This is set to true when we know the 'smallest' wait position. */
+  // sayidzhang 等待最小的未知的标志
   bool            wait_file_name_inited_;
 
   /* NULL, or the 'smallest' filename that a transaction is waiting for
    * slave replies.
    */
+  // sayidzhang 等待从库的ack的文件
   char            wait_file_name_[FN_REFLEN];
 
   /* The smallest position in that file that a trx is waiting for: the trx
@@ -724,6 +732,7 @@ public:
    *  end_offset    - (IN)  the offset in the binlog file up to which we have
    *                        the replies from the slave or that was skipped
    */
+  // sayidzhang 报道我们从从库得到的ack信息，包含日志文件和位置
   void reportReplyBinlog(const char* log_file_name, my_off_t end_offset);
 
   /* Commit a transaction in the final step.  This function is called from
@@ -787,6 +796,7 @@ public:
    * Return:
    *  0: success;  non-zero: error
    */
+  // sayidzhang 事务完成写入到binlog文件后调用，更新binlog文件和位置
   int writeTranxInBinlog(const char* log_file_name, my_off_t log_file_pos);
 
   /* Read the slave's reply so that we know how much progress the slave makes
@@ -849,6 +859,7 @@ public:
     @param[in] log_file_pos   binlog file position of the ack
   */
   // flyyear 处理从库的ack回包, 参数是回包中的binlog文件及其位置
+  // sayidzhang 这个ack信息会带着从库的server_id信息
   void handleAck(int server_id, const char *log_file_name,
                  my_off_t log_file_pos)
   {
