@@ -372,6 +372,7 @@ int ActiveTranx::clear_active_tranx_nodes(const char *log_file_name,
 }
 
 // flyyear 主库接收到从库的ack包后，调用此函数
+// 传入参数包含从库的server_id
 int ReplSemiSyncMaster::reportReplyPacket(uint32 server_id, const uchar *packet,
                              ulong packet_len)
 {
@@ -402,6 +403,7 @@ int ReplSemiSyncMaster::reportReplyPacket(uint32 server_id, const uchar *packet,
     sql_print_error("Read semi-sync reply binlog file length too large");
     goto l_end;
   }
+  // sayizhang 这个从确认包里面读取binlog文件名
   strncpy(log_file_name, (const char*)packet + REPLY_BINLOG_NAME_OFFSET, log_file_len);
   log_file_name[log_file_len] = 0;
 
@@ -1429,6 +1431,7 @@ const AckInfo* AckContainer::insert(int server_id, const char *log_file_name,
   const char *kWho = "AckContainer::insert";
   function_enter(kWho);
 
+  // sayidzhang 意思是已经向主库报告了在这个之后的日志信息，所以这个不必要保存了
   if (!m_greatest_ack.less_than(log_file_name, log_file_pos))
   {
     if (trace_level_ & kTraceDetail)
@@ -1441,6 +1444,7 @@ const AckInfo* AckContainer::insert(int server_id, const char *log_file_name,
   if (updateIfExist(server_id, log_file_name, log_file_pos) < m_size)
     goto l_end;
 
+  // sayidzhang 如果ack的容器已经满了，则返回ack文件和pos点最小的那个
   if (full())
   {
     AckInfo *min_ack;
@@ -1451,6 +1455,7 @@ const AckInfo* AckContainer::insert(int server_id, const char *log_file_name,
     min_ack= minAck(log_file_name, log_file_pos);
     if (likely(min_ack == NULL))
     {
+      // sayidzhang 修改已经确认的最小的日志信息
       m_greatest_ack.set(server_id, log_file_name, log_file_pos);
 
       /* Remove all slaves which have minimum ack position from the ack array */
@@ -1466,6 +1471,7 @@ const AckInfo* AckContainer::insert(int server_id, const char *log_file_name,
     }
   }
 
+  // sayidzhang 如果ack的数组没有满，则直接插入到数组里面
   m_ack_array[m_empty_slot].set(server_id, log_file_name, log_file_pos);
 
   if (trace_level_ & kTraceDetail)

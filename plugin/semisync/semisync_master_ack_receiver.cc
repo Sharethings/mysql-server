@@ -65,6 +65,7 @@ Ack_receiver::~Ack_receiver()
   function_exit(kWho);
 }
 
+// sayidzhang ack线程开始执行
 bool Ack_receiver::start()
 {
   const char *kWho = "Ack_receiver::start";
@@ -83,6 +84,7 @@ bool Ack_receiver::start()
         pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM) != 0 ||
 #endif
         // flyyear 新建一个ack线程, ack_receive_handler回调函数
+        // sayidzhang 意思是说现在这面开始用一个单独的线程来做ack的事情
         mysql_thread_create(key_ss_thread_Ack_receiver_thread, &m_pid,
                             &attr, ack_receive_handler, this))
     {
@@ -257,6 +259,7 @@ void Ack_receiver::run()
         sql_print_information("Failed to wait on semi-sync dump sockets, "
                               "error: errno=%d", socket_errno);
       /* Sleep 1us, so other threads can catch the m_mutex easily. */
+      // sayidzhang 这面steven好像说是时间太短了
       my_sleep(1);
       continue;
     }

@@ -122,6 +122,8 @@ int ReplSemiSyncSlave::slaveReply(MYSQL *mysql,
                   };);
 
   /* Prepare the buffer of the reply. */
+  // sayizhang 这面是ack包里面包含的内容
+  // 魔术数字、binlog文件名和位置
   reply_buffer[REPLY_MAGIC_NUM_OFFSET] = kPacketMagicNum;
   int8store(reply_buffer + REPLY_BINLOG_POS_OFFSET, binlog_filepos);
   memcpy(reply_buffer + REPLY_BINLOG_NAME_OFFSET,

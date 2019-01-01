@@ -132,6 +132,10 @@ template<> struct MY_ALIGNED(16) my_alignment_imp<16> {};
 
 /**
   A POD type with a given size and alignment.
+  // sayidzhang POD类型的好处
+  // 1. 可以使用字节赋值，比如memset，memcpy
+  // 2. 对C内存布局的兼容
+  // 3. 保证了静态初始化的安全有效
 
   @remark If the compiler does not support a alignment attribute
           (MY_ALIGN macro), the default alignment of a double is

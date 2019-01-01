@@ -445,7 +445,7 @@ struct AckInfo
 // sayidzhang AckContainer内部存储收到的ack信息，并且当事务完全确认时告诉调用者ack的位置，
 // 因此可以唤醒等待的事务
 // 是所有收到的ack的管理器，内部有AckInfo指针m_ack_array和一个m_greatest_ack，m_ack_array大小是rpl_semi_sync_master_wait_for_slave_count-1
-// 当m_ack_array满了，新收到的ack不在m_ack_array的ack里面，则说明已经收到了rpl_semi_sync_master_wait_for_slave_count个的从库的信息，从所有的ack里面找到最小的ack，同事更新m_ack_array解决
+// 当m_ack_array满了，新收到的ack不在m_ack_array的ack里面，则说明已经收到了rpl_semi_sync_master_wait_for_slave_count个的从库的信息，从所有的ack里面找到最小的ack，同时更新m_ack_array解决
 class AckContainer : public Trace
 {
 public:
@@ -488,6 +488,9 @@ public:
      @return Pointer of an ack if the ack should be reported to semisync master.
              Otherwise, NULL is returned.
   */
+  // sayidzhang
+  // 这个网ack的容器里面插入新的值，如果ack的容器已经满了，则返回这个ack容器和要插入的ack信息里面的最小的ack，如果没有满则
+  // 返回null
   const AckInfo* insert(int server_id, const char *log_file_name,
                         my_off_t log_file_pos);
   const AckInfo* insert(const AckInfo &ackinfo)
@@ -497,12 +500,14 @@ public:
 
 private:
   /* The greatest ack of the acks already reported to semisync master. */
+  // sayidzhang 用来记录已经报告给半同步主库的最大ack信息，即这个之前的日志信息已经向主库确认过了
   AckInfo m_greatest_ack;
 
   AckInfo *m_ack_array;
   /* size of the array */
   unsigned int m_size;
   /* index of an empty slot, it helps improving insert speed. */
+  // sayidzhang 这面用来快速的找到一个空的坑位，下面可以看到这个变量就是瞎几把赋值
   unsigned int m_empty_slot;
 
   /* Prohibit to copy AckContainer objects */
@@ -526,6 +531,7 @@ private:
       if (m_ack_array[i].equal_to(log_file_name, log_file_pos))
       {
         m_ack_array[i].clear();
+        // sayidzhang 这面意思是瞎记录一个为空的位置? 且记录的还是index最大的
         m_empty_slot= i;
       }
     }
@@ -542,15 +548,19 @@ private:
      @return index of the slot that is updated. if it equals to
              the size of container, then no slot is updated.
   */
+  // sayidzhang 这面意思是有可能ack的回包有可能比较快，直接更新这个
+  // 从库对应的坑位
   unsigned int updateIfExist(int server_id, const char *log_file_name,
                              my_off_t log_file_pos)
   {
     unsigned int i;
 
+    // sayidzhang 这个直接把m_size赋值给m_empty_slot意识是如果下面没有找到说明坑位都满了
     m_empty_slot= m_size;
     for (i= 0; i < m_size; i++)
     {
       if (m_ack_array[i].empty())
+        // sayidzhang 瞎几把找到了一个坑位
         m_empty_slot= i;
       else if (m_ack_array[i].is_server(server_id))
       {
@@ -573,6 +583,8 @@ private:
      @return NULL if no ack is smaller than given position, otherwise
               return its pointer.
   */
+  // sayidzhang 这面就是返回个最后一个小于传入的log_file_name和log_file_pos的啊，
+  // 索引最小的那个？为什么要这么做呢,这么做不会出现找到的并不是最小的日志的和位置吗？
   AckInfo *minAck(const char *log_file_name, my_off_t log_file_pos)
   {
     unsigned int i;
@@ -872,6 +884,7 @@ public:
       const AckInfo *ackinfo= NULL;
 
       ackinfo= ack_container_.insert(server_id, log_file_name, log_file_pos);
+      // sayizhang 如果不为空 说明ack_container满了
       if (ackinfo != NULL)
         reportReplyBinlog(ackinfo->binlog_name, ackinfo->binlog_pos);
     }
