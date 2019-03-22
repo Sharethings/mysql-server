@@ -479,6 +479,8 @@ int ReplSemiSyncMaster::initObject()
     rpl_semi_sync_master_wait_for_slave_count may be set through mysqld option.
     So call setWaitSlaveCount to initialize the internal ack container.
   */
+  // flyyear rpl_semi_sync_master_wait_for_slave_count这个变量可以直接在mysqld的选项里面
+  DBUG_PRINT("flyyear", ("in seisync_master.cc rpl_semi_sync_master_wait_for_slave_count is %d", rpl_semi_sync_master_wait_for_slave_count));
   if (setWaitSlaveCount(rpl_semi_sync_master_wait_for_slave_count))
     return 1;
 
@@ -514,7 +516,7 @@ int ReplSemiSyncMaster::enableMaster()
         rpl_semi_sync_master_wait_no_slave == 0) if there is no enough active
         semisync clients
       */
-      // sayidzhang 如果rpl_semi_sync_master_wait_no_slave
+      // flyyear 如果rpl_semi_sync_master_wait_no_slave
       // 开启了或者现在的从库多于主库等待从库的个数，则开启半同步复制
       state_ = (rpl_semi_sync_master_wait_no_slave != 0 ||
                 (rpl_semi_sync_master_clients >=
@@ -1403,6 +1405,7 @@ void ReplSemiSyncMaster::setExportStats()
 
 int ReplSemiSyncMaster::setWaitSlaveCount(unsigned int new_value)
 {
+  DBUG_PRINT("flyyear", ("in semisync_master setWaitSlaveCount, values is %d", new_value));
   const AckInfo *ackinfo= NULL;
   int result= 0;
 
@@ -1492,6 +1495,7 @@ int AckContainer::resize(unsigned int size, const AckInfo **ackinfo)
     return 0;
 
   // sayidzhnag 这面如果设置成0，即size为0的话，m_size因为是unsigned int的，则m_size值很大
+  // 所以说不可能走到这面的
   m_size= size - 1;
   m_ack_array= NULL;
   if (m_size)

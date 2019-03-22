@@ -87,6 +87,7 @@ typedef struct st_mysql_xid MYSQL_XID;
 */
 // flyyear mysql允许的插件的类型
 // 开发者开发的插件必须指定上述类型之一。
+// 经常用到的也就是MYSQL_STORAGE_ENGINE_PLUGIN、MYSQL_REPLICATION_PLUGIN
 #define MYSQL_UDF_PLUGIN             0  /* User-defined function        */
 #define MYSQL_STORAGE_ENGINE_PLUGIN  1  /* Storage Engine               */
 #define MYSQL_FTPARSER_PLUGIN        2  /* Full-text parser plugin      */
@@ -358,7 +359,16 @@ DECLARE_MYSQL_SYSVAR_BASIC(name, char *) = { \
 DECLARE_MYSQL_SYSVAR_SIMPLE(name, int) = { \
   PLUGIN_VAR_INT | ((opt) & PLUGIN_VAR_MASK), \
   #name, comment, check, update, &varname, def, min, max, blk }
-
+//flyyear 调用的地方
+//static MYSQL_SYSVAR_UINT(wait_for_slave_count,   /* name  */
+//  rpl_semi_sync_master_wait_for_slave_count,     /* var   */
+//  PLUGIN_VAR_OPCMDARG,                           /* flags */
+//  "How many slaves the events should be replicated to. Semisynchronous "
+//  "replication master will wait until all events of the transaction are "
+//  "replicated to at least rpl_semi_sync_master_wait_for_slave_count slaves",
+//  NULL,                                           /* check() */
+//  &fix_rpl_semi_sync_master_wait_for_slave_count, /* update */
+//  1, 1, 65535, 1);
 #define MYSQL_SYSVAR_UINT(name, varname, opt, comment, check, update, def, min, max, blk) \
 DECLARE_MYSQL_SYSVAR_SIMPLE(name, unsigned int) = { \
   PLUGIN_VAR_INT | PLUGIN_VAR_UNSIGNED | ((opt) & PLUGIN_VAR_MASK), \

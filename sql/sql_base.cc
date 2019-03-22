@@ -9690,9 +9690,11 @@ my_bool mysql_rm_tmp_tables(void)
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
 
+  DBUG_PRINT("flyyear", ("tmp dir max is %d", mysql_tmpdir_list.max));
   for (i=0; i<=mysql_tmpdir_list.max; i++)
   {
     tmpdir=mysql_tmpdir_list.list[i];
+    DBUG_PRINT("flyyear", ("tmp dir is %s", tmpdir));
     /* See if the directory exists */
     if (!(dirp = my_dir(tmpdir,MYF(MY_WME | MY_DONT_SORT))))
       continue;

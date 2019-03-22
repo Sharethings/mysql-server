@@ -269,6 +269,7 @@ extern my_bool  my_disable_locking,
 extern char	wild_many,wild_one,wild_prefix;
 extern const char *charsets_dir;
 
+// flyyear 缓存的类型
 enum cache_type
 {
   TYPE_NOT_SET= 0, READ_CACHE, WRITE_CACHE,
@@ -356,18 +357,19 @@ typedef struct st_io_cache_share
 typedef struct st_io_cache		/* Used when cacheing files */
 {
   /* Offset in file corresponding to the first byte of uchar* buffer. */
-  my_off_t pos_in_file;
+  my_off_t pos_in_file; // flyyear  buffer在整个文件重的偏移量
   /*
     The offset of end of file for READ_CACHE and WRITE_CACHE.
     For SEQ_READ_APPEND it the maximum of the actual end of file and
     the position represented by read_end.
   */
+  // flyyear 文件结束的位置
   my_off_t end_of_file;
   /* Points to current read position in the buffer */
-  uchar	*read_pos;
+  uchar	*read_pos; // flyyear 读取到的当前的位置
   /* the non-inclusive boundary in the buffer for the currently valid read */
-  uchar  *read_end;
-  uchar  *buffer;				/* The read buffer */
+  uchar  *read_end; // flyyear 最大允许读取的位置
+  uchar  *buffer;				/* The read buffer */ // flyyear 文件中读取的文件内容
   /* Used in ASYNC_IO */
   uchar  *request_pos;
 
@@ -381,8 +383,10 @@ typedef struct st_io_cache		/* Used when cacheing files */
   */
   uchar *append_read_pos;
   /* Points to current write position in the write buffer */
+  // flyyear 指向写入缓存当前写入的点
   uchar *write_pos;
   /* The non-inclusive boundary of the valid write area */
+  // flyyear 有效写入的非包含边界
   uchar *write_end;
 
   /*

@@ -3480,6 +3480,8 @@ static int init_server_components()
               array_elements(binlog_format_names)-1);
 
 #ifdef HAVE_REPLICATION
+  // flyyear
+  // 这面进行判断log_slave_update和参数replicate_same_server_id是否都开启了，如果都开启了将会报错
   if (opt_log_slave_updates && replicate_same_server_id)
   {
     if (opt_bin_log)
@@ -4497,6 +4499,10 @@ int mysqld_main(int argc, char **argv)
     reload_optimizer_cost_constants();
 
   // flyyear 这面删除临时表，初始化用户的信息, 初始时区信息, 权限信息
+  // 临时表基本都是内存表为什么除？
+  // 这面说的内存是自己理解的通过语句create temporary 这种创建的，其实临时表分为
+  // 外部内存表 通过create temporary方式创建的
+  // 内部内存表 MySQL为了优化自己创建的，这种有HEAP和OnDisk方式
   if (mysql_rm_tmp_tables() || acl_init(opt_noacl) ||
       my_tz_init((THD *)0, default_tz_name, opt_bootstrap) ||
       grant_init(opt_noacl))

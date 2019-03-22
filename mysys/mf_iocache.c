@@ -92,7 +92,8 @@ void setup_io_cache(IO_CACHE* info)
   }
 }
 
-
+// flyyear 根据IO_CACHE的类型初始化IO_CACHE::read_function和write_function,
+// 当缓冲区大小没法满足文件IO请求时就会调用这两个函数去文件中交换
 static void
 init_functions(IO_CACHE* info)
 {
@@ -1392,19 +1393,27 @@ int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count)
 
   lock_append_buffer(info);
   rest_length= (size_t) (info->write_end - info->write_pos);
+  DBUG_PRINT("flyyear", ("Count: %u, rest_length: %u", Count, rest_length));
+  // flyyear rest_lenght表示剩余的缓冲区空间，缓冲区够用
   if (Count <= rest_length)
     goto end;
+  // flyyear 缓冲区不够用，把剩下的写满
   memcpy(info->write_pos, Buffer, rest_length);
   Buffer+=rest_length;
   Count-=rest_length;
   info->write_pos+=rest_length;
+  // flyyear 刷新到文件系统里面去
+  DBUG_PRINT("flyyear", ("in my_b_append flush to disk"));
   if (my_b_flush_io_cache(info,0))
   {
     unlock_append_buffer(info);
     return 1;
   }
+  DBUG_PRINT("flyyear", ("Count: %u, IO_SIZE: %u", Count, IO_SIZE));
+  // flyyear 如果剩下的Count还是太大，大于IO_SIZE大小，则直接写到文件里面去
   if (Count >= IO_SIZE)
   {					/* Fill first intern buffer */
+    // flyyear 将大于IO_SIZE的部分写入到文件里面去
     length=Count & (size_t) ~(IO_SIZE-1);
     if (mysql_file_write(info->file,Buffer, length, info->myflags | MY_NABP))
     {
@@ -1417,6 +1426,10 @@ int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count)
   }
 
 end:
+  // flyyear 到这面有两种情况
+  // 1. goto过来，表示缓冲区够用
+  // 2. 整个流程走下来，剩下的数据也可以放到缓冲区里面去了
+  // 将Buffer数据拷贝到文件缓存里面
   memcpy(info->write_pos,Buffer,(size_t) Count);
   info->write_pos+=Count;
   unlock_append_buffer(info);
@@ -1505,6 +1518,7 @@ int my_block_write(IO_CACHE *info, const uchar *Buffer, size_t Count,
 #define UNLOCK_APPEND_BUFFER if (need_append_buffer_lock) \
   unlock_append_buffer(info);
 
+// flyyear 刷新缓存
 int my_b_flush_io_cache(IO_CACHE *info,
                         int need_append_buffer_lock MY_ATTRIBUTE((unused)))
 {

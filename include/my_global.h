@@ -332,6 +332,8 @@ static inline int is_directory_separator(char c)
   smaller what the disk page size. This influences the speed of the
   isam btree library. eg to big to slow.
 */
+// flyyear MySQL 中的 IO_CACHE 的作用就是把连续的文件读写操作，经过缓冲，转化为 4K
+// 对齐的文件读写操作
 #define IO_SIZE			4096
 /*
   How much overhead does malloc have. The code often allocates
@@ -579,6 +581,7 @@ typedef char		my_bool; /* Small bool */ // flyyear bool类型不就是一个字�
 #define MYSQL_UNIVERSAL_CLIENT_CHARSET MYSQL_DEFAULT_CHARSET_NAME
 #endif
 
+// sayidzhang 
 #if defined(_WIN32)
 #define dlsym(lib, name) (void*)GetProcAddress((HMODULE)lib, name)
 #define dlopen(libname, unused) LoadLibraryEx(libname, NULL, 0)

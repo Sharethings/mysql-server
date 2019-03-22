@@ -1428,7 +1428,7 @@ err:
   Binlog format tolerance is in (buf, event_len, description_event)
   constructors.
 */
-
+// flyyear relaylog 这面已经读取到event，到这面来处理
 Log_event* Log_event::read_log_event(const char* buf, uint event_len,
 				     const char **error,
                                      const Format_description_log_event *description_event,
@@ -11293,6 +11293,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
     query_cache.invalidate_locked_for_write(rli->tables_to_lock);
   }
 
+ // flyyear 从table_map中获取table的信息
   table=
     m_table= const_cast<Relay_log_info*>(rli)->m_table_map.get_table(m_table_id);
 
@@ -11438,6 +11439,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
       error= HA_ERR_END_OF_FILE;
       goto AFTER_MAIN_EXEC_ROW_LOOP;
     }
+    // flyyear 根据不同的类型通过 do_apply_row_ptr 函数指针指向的函数，将事件对应操作应用到备库
     switch (m_rows_lookup_algorithm)
     {
       case ROW_LOOKUP_HASH_SCAN:

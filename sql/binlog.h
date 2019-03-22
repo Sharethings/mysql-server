@@ -461,6 +461,8 @@ class MYSQL_BIN_LOG: public TC_LOG
      sync_binlog_period, for relay log this will be
      sync_relay_log_period
   */
+  // flyyear  这个变量在binlog相关的就是sync_binlog的值
+  // 和relaylog相关的就是sync_relay_log的值
   uint *sync_period_ptr;
   uint sync_counter;
 
@@ -760,7 +762,7 @@ public:
   void set_max_size(ulong max_size_arg);
   // flyyear 发送binlog更新的信号
   // 从主库同步binlog到从库的dump线程，会接收到这个binlog已有更新的信号，然后启动
-  // dump binlog的流程
+  // dump binlog的流程，这面就是通过sql线程来回放数据
   void signal_update()
   {
     DBUG_ENTER("MYSQL_BIN_LOG::signal_update");

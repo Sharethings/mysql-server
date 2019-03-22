@@ -2010,6 +2010,7 @@ bool start_slave_threads(bool need_lock_slave, bool wait_for_start,
 
   if (thread_mask & SLAVE_IO)
       // flyyear 这面启动io线程
+      // io线程和sql线程之间通过条件变量进行唤醒
     is_error= start_slave_thread(
 #ifdef HAVE_PSI_INTERFACE
                                  key_thread_slave_io,
@@ -5155,6 +5156,7 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
     DBUG_RETURN(1);
   }
 
+  // flyyear 这面获取下一个event，卡死在这面了，因为有可能IO没有拉取最新的
   Log_event *ev = next_event(rli), **ptr_ev;
 
   DBUG_ASSERT(rli->info_thd==thd);
@@ -5732,6 +5734,7 @@ connected:
   }
 
   DBUG_PRINT("info",("Starting reading binary log from master"));
+  // sayidzhang 这面就是直接死循环了，进行event的读取
   while (!io_slave_killed(thd,mi))
   {
     THD_STAGE_INFO(thd, stage_requesting_binlog_dump);
@@ -5760,6 +5763,7 @@ requesting master dump") ||
     const char *event_buf;
 
     DBUG_ASSERT(mi->last_error().number == 0);
+    // sayidzhang 这面一直读取event
     while (!io_slave_killed(thd,mi))
     {
       ulong event_len;
@@ -5846,6 +5850,8 @@ Stopping slave I/O thread due to out-of-memory error from master");
         goto err;
       }
       // flyyear 向主库发送ack包, 所以从库是等待relaylog落盘后才发送ack包的
+      // sayidzhang 再次看看这个，得整理出来一份文章出来
+      // 这面原来都是看过的，现在都忘记了，唉
       if (RUN_HOOK(binlog_relay_io, after_queue_event,
                    (thd, mi, event_buf, event_len, synced)))
       {
@@ -7416,7 +7422,7 @@ extern "C" void *handle_slave_sql(void *arg)
         rli->get_group_master_log_name(), (ulong) rli->get_group_master_log_pos());
       saved_skip= 0;
     }
-   // flyyear 每次调用处理一个日志event 
+   // flyyear 每次调用处理一个日志event
     if (exec_relay_log_event(thd,rli))
     {
       DBUG_PRINT("info", ("exec_relay_log_event() failed"));
@@ -8566,6 +8572,8 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
   DBUG_ASSERT(lock_count == 1);
   lock_count= 2;
 
+  // flyyear 读取日志发送过来的binlog里面的server_id
+  // 以为每个event都要读取对应的server_id，所以需要一个一个的读取
   s_id= uint4korr(buf + SERVER_ID_OFFSET);
 
   /*
@@ -8575,12 +8583,20 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
   */
   s_id&= opt_server_id_mask;
 
+  // flyyear
+  // 这面进行判断传送过来的server_id是否和本服务器的server_id一样，如果一样且参数replicate_same_server_id没有开启，则这段binlog的信息不会往relay_log里面写入
   if ((s_id == ::server_id && !mi->rli->replicate_same_server_id) ||
       /*
         the following conjunction deals with IGNORE_SERVER_IDS, if set
         If the master is on the ignore list, execution of
         format description log events and rotate events is necessary.
       */
+      // flyyear 因为IGNORE_SERVER_IDS是直接在change mater to
+      // 里面设置的，所以这个是动态的，所以这面是要动态修改的
+      // 如果ignore_server_id有值，且通过shall_ignore_server_id查找到了这个server_id信息
+      // 如果不是master的将所有的都会不往relaylog里面写入
+       // master的FORMAT_DESCRIPTION_EVENT和ROTATE_EVENT写入到relaylog里面
+       // 这个意思就是说将binlog的文件头和文件尾写入到ralaylog里面去
       (mi->ignore_server_ids->dynamic_ids.size() > 0 &&
        mi->shall_ignore_server_id(s_id) &&
        /* everything is filtered out from non-master */
@@ -8622,9 +8638,10 @@ bool queue_event(Master_info* mi,const char* buf, ulong event_len)
   }
   else
   {
+    // flyyear  这面是要写入到relaylog里面的
     bool is_error= false;
     /* write the event to the relay log */
-    // flyyear 将event写入到relay log中,并且刷盘
+    // flyyear 将event写入到relay log中,并且刷盘?? 这面不一定刷盘的，这面在看一下
     if (likely(rli->relay_log.append_buffer(buf, event_len, mi) == 0))
     {
       mi->set_master_log_pos(mi->get_master_log_pos() + inc_pos);
@@ -9090,6 +9107,7 @@ static Log_event* next_event(Relay_log_info* rli)
       But if the relay log is created by new_file(): then the solution is:
       MYSQL_BIN_LOG::open() will write the buffered description event.
     */
+    // flyyear 读取event
     if ((ev= Log_event::read_log_event(cur_log, 0,
                                        rli->get_rli_description_event(),
                                        opt_slave_sql_verify_checksum)))
@@ -9292,6 +9310,7 @@ static Log_event* next_event(Relay_log_info* rli)
         mysql_cond_broadcast(&rli->log_space_cond);
         // Note that wait_for_update_relay_log unlocks lock_log !
 
+        // flyyear 如果是并行复制
         if (rli->is_parallel_exec() && (opt_mts_checkpoint_period != 0 ||
             DBUG_EVALUATE_IF("check_slave_debug_group", 1, 0)))
         {
@@ -9324,7 +9343,10 @@ static Log_event* next_event(Relay_log_info* rli)
         }
         else
         {
+          // flyyear 如果普通的复制问题
+          DBUG_PRINT("flyyear", ("before wait_for_update_relay_log"));
           rli->relay_log.wait_for_update_relay_log(thd, NULL);
+          DBUG_PRINT("flyyear", ("after wait_for_update_relay_log"));
         }
         
         // re-acquire data lock since we released it earlier

@@ -677,7 +677,7 @@ enum ha_notification_type { HA_NOTIFY_PRE_EVENT, HA_NOTIFY_POST_EVENT };
 
 extern st_plugin_int *hton2plugin[MAX_HA];
 
-// flyyear Mysql与存储引擎之间的接口主要是由此文件里面的class handler和struct handlerton
+// flyyear MySQL sql层与存储引擎之间的接口主要是由此文件里面的class handler和struct handlerton
 // 上面两个的主要区别是：struct handlerton定义了事务操作接口；
 // class handler 定义了表、索引以及记录操作接口
 class handler;

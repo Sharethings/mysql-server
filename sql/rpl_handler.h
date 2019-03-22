@@ -47,7 +47,9 @@ public:
 
 class Delegate {
 public:
+  // flyyear 观察者的链表
   typedef List<Observer_info> Observer_info_list;
+  // flyyear 观察者的迭代器
   typedef List_iterator<Observer_info> Observer_info_iterator;
 
   int add_observer(void *observer, st_plugin_int *plugin)
@@ -157,6 +159,7 @@ public:
 private:
   // flyyear 定义一个链表，里面存储了Observer_info类型的成员
   // 还有一把读写锁进行保护
+  // flyyear 因为binlog_storage_delegate是全局变量，所以这面的observer_info_list也是唯一的
   Observer_info_list observer_info_list;
   mysql_rwlock_t lock;
   MEM_ROOT memroot;
@@ -325,6 +328,12 @@ extern Binlog_relay_IO_delegate *binlog_relay_io_delegate;
   immediately.
 */
 // flyyear 这面使用宏来调用相应的代理
+//                 before_commit,
+//                 (thd, all,
+//                  thd_get_cache_mngr(thd)->get_binlog_cache_log(true),
+//                  thd_get_cache_mngr(thd)->get_binlog_cache_log(false),
+//                  max<my_off_t>(max_binlog_cache_size,
+//                                max_binlog_stmt_cache_size))))
 #define RUN_HOOK(group, hook, args)             \
   (group ##_delegate->is_empty() ?              \
    0 : group ##_delegate->hook args)

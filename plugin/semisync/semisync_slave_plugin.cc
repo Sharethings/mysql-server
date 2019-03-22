@@ -211,6 +211,7 @@ static SHOW_VAR semi_sync_slave_status_vars[]= {
   {NULL, NULL, SHOW_BOOL, SHOW_SCOPE_GLOBAL},
 };
 
+// sayizhang 
 Binlog_relay_IO_observer relay_io_observer = {
   sizeof(Binlog_relay_IO_observer), // len
 

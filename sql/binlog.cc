@@ -6925,6 +6925,7 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
     only if the trx parser is not inside a transaction.
   */
   // flyyear ralaylog超过了限制，但是如果在同一个事务里面不能将部分event放到下一个relaylog里面
+  // 这面就可以用来判断一个event是否在一个事物里面了
   bool can_rotate= mi->transaction_parser.is_not_inside_transaction();
 
 #ifndef DBUG_OFF
@@ -6939,6 +6940,10 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
 
   // Flush and sync
   bool error= false;
+  // flyyear 这面直接就是0了，即不强制刷新到磁盘的，即flush_and_sync不是强制刷新的
+  // 这面为0表示没有刷新到磁盘
+  // 如果把下面的这行注释掉，为啥还是会将relaylog刷新到磁盘呢
+  //if (0 && flush_and_sync(0) == 0 && can_rotate)
   if (flush_and_sync(0) == 0 && can_rotate)
   {
     /*
@@ -7004,7 +7009,7 @@ bool MYSQL_BIN_LOG::append_event(Log_event* ev, Master_info *mi)
 }
 
 
-// flyyear 这面写日志到relaylog
+// flyyear 这面写events到relaylog的文件缓冲区获取刷新到磁盘里去
 bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::append_buffer");
@@ -7016,7 +7021,10 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 
   // write data
   bool error= false;
-  // flyyear 这面写入到ralaylog buff里面
+  // flyyear 这面写入到ralaylog 缓存里面, 但是这面在mac系统里面直接刷新到磁盘里面去了，
+  // 难道是系统的问题吗?
+  // 把下面的after_append_to_relay_log给注视掉之后发现，没有影响relaylog的正常的写入，只是里面的signal_update()没有正常的调用了
+  // 这面的文件的刷盘到底是谁做的呢？难道是文件系统做的，这也太频繁了吧
   if (my_b_append(&log_file,(uchar*) buf,len) == 0)
   {
     bytes_written += len;
@@ -7025,6 +7033,7 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
   }
   else
     error= true;
+  DBUG_PRINT("flyyear", ("in append_buffer write_pos: %u", log_file.write_pos));
 
   DBUG_RETURN(error);
 }
@@ -7032,6 +7041,7 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 
 bool MYSQL_BIN_LOG::flush_and_sync(const bool force)
 {
+  // flyyear 为什么测试的时候
   mysql_mutex_assert_owner(&LOCK_log);
 
   if (flush_io_cache(&log_file))
@@ -7876,6 +7886,7 @@ int MYSQL_BIN_LOG::wait_for_update_relay_log(THD* thd, const struct timespec *ti
                   &stage_slave_has_read_all_relay_log,
                   &old_stage);
 
+  // flyyear  等待relaylog的更新条件变量
   if (!timeout)
     mysql_cond_wait(&update_cond, &LOCK_log);
   else
@@ -8334,7 +8345,7 @@ int MYSQL_BIN_LOG::prepare(THD *thd, bool all)
   @retval RESULT_ABORTED   error, transaction was neither logged nor committed
   @retval RESULT_INCONSISTENT  error, transaction was logged but not committed
 */
-// flyyear 提交事务
+// flyyear 提交事物
 TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::commit");
@@ -8950,12 +8961,17 @@ MYSQL_BIN_LOG::flush_cache_to_file(my_off_t *end_pos_var)
   Call fsync() to sync the file to disk.
 */
 // flyyear 同步日志到磁盘
+// 这面带有参数是否强制刷新
+// 这面的binog和relaylog是复用的
 std::pair<bool, bool>
 MYSQL_BIN_LOG::sync_binlog_file(bool force)
 {
   bool synced= false;
   unsigned int sync_period= get_sync_period();
+  // flyyear 如果是强制刷新或者event的个数大于设置的sync_period的个数，则会进行刷新
+  DBUG_PRINT("flyyear", ("force : %u, sync_period: %d, sync_count: %d", force, sync_period, sync_counter));
   if (force || (sync_period && ++sync_counter >= sync_period))
+ // if (1 || (1000 && ++sync_counter >= 1000))
   {
     sync_counter= 0;
 
@@ -8973,6 +8989,8 @@ MYSQL_BIN_LOG::sync_binlog_file(bool force)
       TODO: fix this properly even for non-transactional storage
             engines.
      */
+    DBUG_PRINT("flyyear", ("flush to disk"));
+    //sleep(20);
     if (DBUG_EVALUATE_IF("simulate_error_during_sync_binlog_file", 1,
                     // flyyear 这面同步binlog buff中数据到disk
                          mysql_file_sync(log_file.file,
@@ -9239,7 +9257,7 @@ void MYSQL_BIN_LOG::handle_binlog_flush_or_sync_error(THD *thd,
 // 处理步骤如下：
 // 1. 将binlog数据刷写到文件中
 // 2. 将当前的binlog文件名和位点注册到semisync模块中，以便后面等待备机的回复
-// 3. 调用函数MYSQL_BIN_LOG::sync_binlog_file()将binlog文件sync到磁盘，到这里事务将不能回滚，即使mysqld崩溃了事务也会最终提交,因为当binlog刷新到磁盘后,即使宕机了，数据恢复的时候也会根据binlog如果有的事务直接redolog里面commit
+// 3. 调用函数MYSQL_BIN_LOG::sync_binlog_file()将binlog文件sync到磁盘(这面不一定强制刷新到了磁盘)，到这里事务将不能回滚，即使mysqld崩溃了事务也会最终提交,因为当binlog刷新到磁盘后,即使宕机了，数据恢复的时候也会根据binlog如果有的事务直接redolog里面commit
 // 4. 调用MYSQL_BIN_LOG::update_binlog_end_pos()更新binlog最后sync的位点信息，这时为备库复制服务的binlog_dump线程才可以读到这个事务,可以参考Log_event::read_log_event()
 // 5. 如果semisync模块配置了rpl_semi_sync_master_wait_point为after_sync,那么当前session将在这里等待备机回复在继续
 // 6. ordered_commit()接下来会最终调用ha_commit_low()在存储引擎层提交
@@ -9349,7 +9367,10 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     flush_error= flush_cache_to_file(&flush_end_pos);
   DBUG_EXECUTE_IF("crash_after_flush_binlog", DBUG_SUICIDE(););
 
+  // flyyear
+  // get_sync_period在这面就是获得sync_binlog的值，这面表示如果sync_binlog值为1，就是每个事务都要刷新binlog
   update_binlog_end_pos_after_sync= (get_sync_period() == 1);
+  DBUG_PRINT("flyyear", ("get_sync_period: %u, binlog_end_pos_after_sync: %d", get_sync_period(), update_binlog_end_pos_after_sync));
 
   /*
     If the flush finished successfully, we can call the after_flush
@@ -9422,7 +9443,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   {
     DEBUG_SYNC(thd, "before_sync_binlog_file");
     // flyyear 这面将binlog buff 同步到disk
-    std::pair<bool, bool> result= sync_binlog_file(false);
+    std::pair<bool, bool> result= sync_binlog_file(false); // flyyear 这面参数false，说明不是强制刷新的
     sync_error= result.first;
   }
 
@@ -9480,6 +9501,7 @@ commit_stage:
         // flyyear 这面表示binlog
         // flush到buff，并且同步到磁盘都没有问题，然后就开始等待从库完成
       sync_error= call_after_sync_hook(commit_queue);
+    // flyyear 可以直接在这面设置 等待半同步的更新完成后
 
     /*
       process_commit_stage_queue will call update_on_commit or

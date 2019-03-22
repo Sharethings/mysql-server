@@ -227,6 +227,7 @@ typedef struct st_mysql_cond mysql_cond_t;
   @c mysql_mutex_assert_owner is a drop-in replacement
   for @c safe_mutex_assert_owner.
 */
+// flyyear 包装器，使用带有检测互斥锁的safe_mutex_assert_owner
 #ifdef SAFE_MUTEX
 #define mysql_mutex_assert_owner(M) \
   safe_mutex_assert_owner(&(M)->m_mutex);

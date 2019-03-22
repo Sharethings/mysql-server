@@ -37,8 +37,10 @@
 int max_binlog_dump_events = 0; // unlimited
 my_bool opt_sporadic_binlog_dump_fail = 0;
 
+// flyyear 这面把宏SLAVE_LIST_CHUNK定义为0导致从库会连接不上的
 #define SLAVE_LIST_CHUNK 128
 #define SLAVE_ERRMSG_SIZE (FN_REFLEN+64)
+// flyyear 这是一个全局变量，用来标记从库的个数
 HASH slave_list;
 extern TYPELIB binlog_checksum_typelib;
 
@@ -146,6 +148,7 @@ int register_slave(THD* thd, uchar* packet, size_t packet_length)
     return 1;
   }
 
+  // flyyear 这面读取从库传过来的server_id
   thd->server_id= si->server_id= uint4korr(p);
   p+= 4;
   get_object(p,si->host, "Failed to register slave: too long 'report-host'");
@@ -167,6 +170,7 @@ int register_slave(THD* thd, uchar* packet, size_t packet_length)
   si->thd= thd;
 
   mysql_mutex_lock(&LOCK_slave_list);
+  // sayizhang 这面是从原来的里面删除，然后重新注册进去
   unregister_slave(thd, false, false/*need_lock_slave_list=false*/);
   res= my_hash_insert(&slave_list, (uchar*) si);
   mysql_mutex_unlock(&LOCK_slave_list);
@@ -189,6 +193,8 @@ void unregister_slave(THD* thd, bool only_mine, bool need_lock_slave_list)
       mysql_mutex_assert_owner(&LOCK_slave_list);
 
     SLAVE_INFO* old_si;
+    // flyyear 这面根据server_id进行hash_search，那么如果从库修改了server_id则会保留多个，
+    // 其实并没有什么问题
     if ((old_si = (SLAVE_INFO*)my_hash_search(&slave_list,
                                               (uchar*)&thd->server_id, 4)) &&
 	(!only_mine || old_si->thd == thd))

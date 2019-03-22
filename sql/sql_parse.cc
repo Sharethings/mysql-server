@@ -4171,6 +4171,7 @@ end_with_restore_list:
     // Fall through.
   case SQLCOM_FLUSH:
   {
+    DBUG_PRINT("flyyear", ("in sqlcom_flush"));
     int write_to_binlog;
     if (check_global_access(thd,RELOAD_ACL))
       goto error;

@@ -63,7 +63,7 @@ extern  const char* _db_get_func_(void);
 #define DBUG_ENTER(a) struct _db_stack_frame_ _db_stack_frame_; \
         _db_enter_ (a,__FILE__,__LINE__,&_db_stack_frame_)
 #define DBUG_LEAVE _db_return_ (__LINE__, &_db_stack_frame_)
-// sayidzhang 这么定义宏 使得调用的时候如同一个函数一样
+// flyyear 这么定义宏 使得调用的时候如同一个函数一样
 // 并且会避免上下文的问题
 #define DBUG_RETURN(a1) do {DBUG_LEAVE; return(a1);} while(0)
 #define DBUG_VOID_RETURN do {DBUG_LEAVE; return;} while(0)

@@ -33,6 +33,7 @@ extern int max_binlog_dump_events;
 extern my_bool opt_sporadic_binlog_dump_fail;
 extern my_bool opt_show_slave_auth_info;
 
+// sayidzhang 从库信息的结构体
 typedef struct st_slave_info
 {
   uint32 server_id;
