@@ -336,6 +336,7 @@ public:
     Check permission against m_master_access
   */
 
+  // flyyear 这面使用每一为代表一个权限信息，然后进行位操作来找判断是否有这个权限
   bool check_access(ulong want_access, bool match_any= false)
   {
     return (match_any ? (m_master_access & want_access) :

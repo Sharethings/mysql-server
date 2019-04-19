@@ -329,6 +329,7 @@ static MYSQL_SYSVAR_ENUM(
   &wait_point_typelib              /* typelib  */
 );
 
+// flyyear 这面意思就是说半同步等待的个数最大65535 最小1
 static MYSQL_SYSVAR_UINT(wait_for_slave_count,   /* name  */
   rpl_semi_sync_master_wait_for_slave_count,     /* var   */
   PLUGIN_VAR_OPCMDARG,                           /* flags */

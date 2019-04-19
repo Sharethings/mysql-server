@@ -4052,6 +4052,7 @@ end_with_restore_list:
   case SQLCOM_REVOKE:
   case SQLCOM_GRANT:
   {
+    DBUG_PRINT("flyyear", ("in SQLCOM_GRANT"));
     if (lex->type != TYPE_ENUM_PROXY &&
         check_access(thd, lex->grant | lex->grant_tot_col | GRANT_ACL,
                      first_table ?  first_table->db : select_lex->db,
@@ -4091,6 +4092,8 @@ end_with_restore_list:
                                         lex->grant & GRANT_ACL))
             goto error;
         } 
+
+        // flyyear 这面传入的是grant后面的用户的信息
         else if (is_acl_user(user->host.str, user->user.str) &&
                  user->auth.str &&
                  check_change_password (thd, user->host.str, user->user.str,
@@ -4099,8 +4102,10 @@ end_with_restore_list:
           goto error;
       }
     }
+    // flyyear 这个用来表示时候有表的信息，如果有就对单个表的授权，如果没有则对库的授权
     if (first_table)
     {
+      DBUG_PRINT("flyyear", ("first table is on"));
       if (lex->type == TYPE_ENUM_PROCEDURE ||
           lex->type == TYPE_ENUM_FUNCTION)
       {
@@ -4131,6 +4136,7 @@ end_with_restore_list:
     }
     else
     {
+      DBUG_PRINT("flyyear", ("first table is off"));
       if (lex->columns.elements || (lex->type && lex->type != TYPE_ENUM_PROXY))
       {
 	my_message(ER_ILLEGAL_GRANT_FOR_TABLE, ER(ER_ILLEGAL_GRANT_FOR_TABLE),
@@ -4140,6 +4146,7 @@ end_with_restore_list:
       else
       {
         /* Conditionally writes to binlog */
+        // flyyear grant命令不管找到没找到该用户都到这面, 进行授权操作
         res = mysql_grant(thd, select_lex->db, lex->users_list, lex->grant,
                           lex->sql_command == SQLCOM_REVOKE,
                           lex->type == TYPE_ENUM_PROXY);
@@ -4173,6 +4180,7 @@ end_with_restore_list:
   {
     DBUG_PRINT("flyyear", ("in sqlcom_flush"));
     int write_to_binlog;
+    // flyyear 检查是否有reload的权限
     if (check_global_access(thd,RELOAD_ACL))
       goto error;
 
@@ -4203,6 +4211,7 @@ end_with_restore_list:
       reload_acl_and_cache() will tell us if we are allowed to write to the
       binlog or not.
     */
+    // flyyear 重新加载权限信息，并且写入到binlog如果有需要的话
     if (!reload_acl_and_cache(thd, lex->type, first_table, &write_to_binlog))
     {
       /*
@@ -4213,6 +4222,8 @@ end_with_restore_list:
         Presumably, RESET and binlog writing doesn't require synchronization
       */
 
+      // flyyear 如果有需要 这面写入到binlog
+      DBUG_PRINT("flyyear",("write to binlog %d", write_to_binlog));
       if (write_to_binlog > 0)  // we should write
       { 
         if (!lex->no_write_to_binlog)

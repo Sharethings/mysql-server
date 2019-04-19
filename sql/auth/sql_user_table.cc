@@ -877,11 +877,12 @@ void update_user_resource(TABLE *table, USER_RESOURCES *mqh)
       store((longlong) mqh->user_conn, TRUE);
 }
 
-
+// flyyear 这面重载了两个方法 一开始一直在上面那个找 搞了半天不对
 int replace_user_table(THD *thd, TABLE *table, LEX_USER *combo,
                        ulong rights, bool revoke_grant,
                        bool can_create_user, ulong what_to_replace)
 {
+  DBUG_PRINT("flyyear", ("table name is %s", table->alias));
   int error = -1;
   bool old_row_exists=0;
   bool builtin_plugin= true;
@@ -920,6 +921,8 @@ int replace_user_table(THD *thd, TABLE *table, LEX_USER *combo,
                                             HA_READ_KEY_EXACT);
   DBUG_EXECUTE_IF("se_error_replace_user_table_read",
                   error= HA_ERR_LOCK_WAIT_TIMEOUT;);
+  DBUG_PRINT("flyyear", ("server error is %d", error));
+  // flyyear 如果没有这个用户，error非零
   if (error)
   {
     if (error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
@@ -959,6 +962,7 @@ int replace_user_table(THD *thd, TABLE *table, LEX_USER *combo,
         with authentication information or the authentication_string
         is empty then report error
       */
+      // flyyear 如果要创建用户 因为是通过grant命令创建用户的，这面要检查sql-mode让不让创建用户
       if ((thd->variables.sql_mode & MODE_NO_AUTO_CREATE_USER) &&
           ((what_to_replace & DEFAULT_AUTH_ATTR) || !combo->auth.length))
       {
@@ -974,6 +978,7 @@ int replace_user_table(THD *thd, TABLE *table, LEX_USER *combo,
     old_row_exists = 0;
     restore_record(table,s->default_values);
     DBUG_ASSERT(combo->host.str != NULL);
+    // flyyear 将用户加入到user表里面
     table->field[MYSQL_USER_FIELD_HOST]->store(combo->host.str,combo->host.length,
                                                system_charset_info);
     table->field[MYSQL_USER_FIELD_USER]->store(combo->user.str,combo->user.length,
@@ -1263,6 +1268,7 @@ end:
   change grants in the mysql.db table
 */
 
+// flyyear 修改mysql.db表授权
 int replace_db_table(TABLE *table, const char *db,
                      const LEX_USER &combo,
                      ulong rights, bool revoke_grant)
@@ -1286,6 +1292,7 @@ int replace_db_table(TABLE *table, const char *db,
     DBUG_RETURN(-1);
 
   /* Check if there is such a user in user table in memory? */
+  // flyyear 这面如果没有该用户，直接报错了
   if (!find_acl_user(combo.host.str,combo.user.str, FALSE))
   {
     my_message(ER_PASSWORD_NO_MATCH, ER(ER_PASSWORD_NO_MATCH), MYF(0));
@@ -1301,14 +1308,18 @@ int replace_db_table(TABLE *table, const char *db,
   key_copy(user_key, table->record[0], table->key_info,
            table->key_info->key_length);
 
+  // flyyear 这面只有通过drop user 然后grant 才返回非0的值
+  // 否则都是0
   error= table->file->ha_index_read_idx_map(table->record[0],0, user_key,
                                             HA_WHOLE_KEY,
                                             HA_READ_KEY_EXACT);
 
   DBUG_EXECUTE_IF("se_error_replace_db_table_read",
                   error= HA_ERR_LOCK_WAIT_TIMEOUT;);
+  DBUG_PRINT("flyyear", ("error is %d", error));
   if (error)
   {
+    DBUG_PRINT("flyyear", ("error is true"));
     if (error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
       goto table_error;
 

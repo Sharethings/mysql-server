@@ -401,6 +401,7 @@ my_bool check_proxy_users= 0, mysql_native_password_proxy_users= 0, sha256_passw
 */
 volatile bool mqh_used = 0;
 // flyyear 这面定义全局变量
+// 这个用于skip-grant-tables变量，用于不读取权限表
 my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
 

@@ -86,12 +86,14 @@ public:
   /**
     An object instance "owns" its array, so we do deep copy here.
    */
+  // flyyear 这面拷贝构造函数 深复制
   Prealloced_array(const Prealloced_array &that)
     : m_size(0), m_capacity(Prealloc), m_array_ptr(cast_rawbuff()),
       m_psi_key(that.m_psi_key)
   {
     if (this->reserve(that.capacity()))
       return;
+    // flyyear 这面进行一个一个复制
     for (const Element_type *p= that.begin(); p != that.end(); ++p)
       this->push_back(*p);
   }
@@ -121,6 +123,7 @@ public:
   Prealloced_array &operator=(const Prealloced_array &that)
   {
     this->clear();
+    // flyyear 检查存储空间是否够存储存储赋值的值，因为这面时深复制
     if (this->reserve(that.capacity()))
       return *this;
     for (const Element_type *p= that.begin(); p != that.end(); ++p)
@@ -153,6 +156,8 @@ public:
     return m_array_ptr[n];
   }
 
+  // flyyear 函数的两个const 第一个表示返回的是const类型
+  // 第二个表示该函数是const的，即不修改类的成员变量
   const Element_type &at(size_t n) const
   {
     DBUG_ASSERT(n < size());
@@ -175,6 +180,7 @@ public:
   iterator begin() { return m_array_ptr; }
   iterator end()   { return m_array_ptr + size(); }
   const_iterator begin() const { return m_array_ptr; }
+  // flyyear 这面返回的也是最后一个的下一个
   const_iterator end()   const { return m_array_ptr + size(); }
 
   /**
@@ -184,6 +190,7 @@ public:
     @param  n number of elements.
     @retval true if out-of-memory, false otherwise.
   */
+  // flyyear 这面重新分配空间,如果有需要的话
   bool reserve(size_t n)
   {
     if (n <= m_capacity)
@@ -259,8 +266,15 @@ public:
       push_back(val);
     else
     {
+      // flyyear 这面先多分配一个空间，然后再将原来的值给往后copy
       resize(m_size + 1);
       // resize() may invalidate position, so do not use it here.
+      // flyyear 这面为什么使用std的copy_backward来进行插入呢？
+      // std::copy_backward（first,last,result)，这个是方向复制 
+      // 复制操作是从last-1开始，直到first结束。这些元素也被从后向前复制到目标容器中，从result-1开始，一直复制last-first个元素。举个简单的例子：已知vector
+      // {0, 1, 2, 3, 4, 5}，现我们需要把最后三个元素（3, 4, 5）复制到前面三个（0, 1,
+      // 2）位置中，那我们可以这样设置：将first设置值3的位置，将last设置为5的下一个位置，而result设置为3的位置，这样，就会先将值5复制到2的位置，然后4复制到1的位置，最后3复制到0的位置，得到我们所要的序列{3,
+      // 4, 5, 3, 4, 5}
       std::copy_backward(begin() + n, end() - 1, end());
       *(begin() + n) = val;
     }
@@ -476,8 +490,8 @@ public:
   }
 
 private:
-  size_t         m_size;
-  size_t         m_capacity;
+  size_t         m_size;      // 表示现在保存的数量
+  size_t         m_capacity;  // 表示能够保存的数量
   // This buffer must be properly aligned.
   my_aligned_storage<Prealloc * sizeof(Element_type), MY_ALIGNOF(double)>m_buff;
   Element_type  *m_array_ptr;

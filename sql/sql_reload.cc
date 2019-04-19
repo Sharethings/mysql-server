@@ -82,6 +82,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long options,
 
     if (thd)
     {
+      // flyyear 重新加载权限信息
       bool reload_acl_failed= acl_reload(thd);
       bool reload_grants_failed= grant_reload(thd);
       bool reload_servers_failed= servers_reload(thd);

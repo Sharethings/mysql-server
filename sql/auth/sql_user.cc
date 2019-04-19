@@ -1151,6 +1151,7 @@ static int handle_grant_struct(enum enum_acl_lists struct_no, bool drop,
     < 0         Error.
 */
 
+// flyyear 检查所有打开的权限表的信息 查看是否有该用户的权限信息，如果有的话就会报错
 static int handle_grant_data(TABLE_LIST *tables, bool drop,
                              LEX_USER *user_from, LEX_USER *user_to)
 {

@@ -1075,6 +1075,7 @@ deny:
   otherwise CREATE_USER_ACL is enough.
 */
 
+// flyyea  这面只是简单的进行判断是否可以创建用户，即是否有insert的权限
 static bool test_if_create_new_users(THD *thd)
 {
   Security_context *sctx= thd->security_context();
@@ -1773,10 +1774,11 @@ bool mysql_routine_grant(THD *thd, TABLE_LIST *table_list, bool is_proc,
   DBUG_RETURN(result);
 }
 
-
+// flyyear revoke_grant 表示是否是revoke命令
 bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
                  ulong rights, bool revoke_grant, bool is_proxy)
 {
+  DBUG_PRINT("flyyear", ("db is %s", db));
   List_iterator <LEX_USER> str_list (list);
   LEX_USER *Str, *tmp_Str, *proxied_user= NULL;
   char tmp_db[NAME_LEN+1];
@@ -1868,6 +1870,7 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
   transactional_tables= (tables[0].table->file->has_transactions() ||
                          tables[1].table->file->has_transactions());
 
+  // flyyear grant命令是false
   if (!revoke_grant)
     create_new_users= test_if_create_new_users(thd);
 
@@ -1896,10 +1899,13 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
       continue;
     }
 
+    // flyyear 这面调用replace_user_table来进行判断db表相关
+    // 全部都要检查db表
     int ret= replace_user_table(thd, tables[0].table, Str,
                                 (!db ? rights : 0), revoke_grant,
                                 create_new_users,
                                 (what_to_set | ACCESS_RIGHTS_ATTR));
+    // flyyear ret不为0表示有错误
     if (ret)
     {
       result= -1;

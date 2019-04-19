@@ -861,7 +861,7 @@ find_acl_user(const char *host, const char *user, my_bool exact)
    FALSE  user not fond
    TRUE   there are such user
 */
-
+// flyyear 这面的用户的查找 只是内存中的用户的查找
 bool is_acl_user(const char *host, const char *user)
 {
   bool res;
@@ -2665,6 +2665,7 @@ static my_bool grant_reload_procs_priv(THD *thd, TABLE_LIST *table)
     @retval TRUE  Error
 */
 
+// 重新读取表或者类级别的权限信息
 my_bool grant_reload(THD *thd)
 {
   TABLE_LIST tables[3];

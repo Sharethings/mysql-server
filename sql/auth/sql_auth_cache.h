@@ -264,6 +264,7 @@ public:
 extern MEM_ROOT global_acl_memory;
 extern MEM_ROOT memex; 
 extern bool initialized;
+// flyyear 10U表示无符号整型
 const size_t ACL_PREALLOC_SIZE = 10U;
 extern Prealloced_array<ACL_USER, ACL_PREALLOC_SIZE> *acl_users;
 extern Prealloced_array<ACL_PROXY_USER, ACL_PREALLOC_SIZE> *acl_proxy_users;
