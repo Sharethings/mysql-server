@@ -3045,6 +3045,7 @@ static bool fix_super_read_only(sys_var *self, THD *thd, enum_var_type type)
   if (super_read_only == opt_super_readonly)
     DBUG_RETURN(false);
 
+  // flyyear 将super_read_only关闭 直接返回
   /* return immediately if turning super_read_only OFF: */
   if (super_read_only == FALSE)
   {
@@ -3077,6 +3078,7 @@ static bool fix_super_read_only(sys_var *self, THD *thd, enum_var_type type)
   super_read_only = opt_super_readonly;
   mysql_mutex_unlock(&LOCK_global_system_variables);
 
+  // flyyear 获取全局只读锁
   if (thd->global_read_lock.lock_global_read_lock(thd))
     goto end_with_mutex_unlock;
 
@@ -3129,6 +3131,9 @@ static Sys_var_mybool Sys_readonly(
 /**
 Setting super_read_only to ON triggers read_only to also be set to ON.
 */
+// flyyear super_read_only开启也会触发read_only开启
+// 这面虽然说开启了super_read_only，只允许复制线程写入，但是对于flush slow logs和flush host
+// 等flush命令，还是会写入binlog信息
 static Sys_var_mybool Sys_super_readonly(
   "super_read_only",
   "Make all non-temporary tables read-only, with the exception for "

@@ -288,16 +288,19 @@ enum enum_mdl_duration {
     Locks with statement duration are automatically released at the end
     of statement or transaction.
   */
+  // flyyear 语句级别的mdl锁，在语句执行结束或者事务结束自动释放
   MDL_STATEMENT= 0,
   /**
     Locks with transaction duration are automatically released at the end
     of transaction.
   */
+  // flyyear 事务级别的锁， 在事务执行结束自动释放
   MDL_TRANSACTION,
   /**
     Locks with explicit duration survive the end of statement and transaction.
     They have to be released explicitly by calling MDL_context::release_lock().
   */
+  // flyyear 语句或者事务结束锁仍然存在，需要手动调用release_lock释放
   MDL_EXPLICIT,
   /* This should be the last ! */
   MDL_DURATION_END };

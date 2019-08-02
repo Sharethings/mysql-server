@@ -69,9 +69,11 @@ public:
     // flyyear 这面的abort_loop是一个全局变量 且是volatile
     while (!abort_loop)
     {
+      DBUG_PRINT("flyyear", ("in connection_event_loop start"));
       Channel_info *channel_info= m_listener->listen_for_connection_event();
       if (channel_info != NULL)
         mgr->process_new_connection(channel_info);
+      DBUG_PRINT("flyyear", ("in connection_event_loop end"));
     }
   }
 

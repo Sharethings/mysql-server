@@ -1500,6 +1500,7 @@ int binlog_cache_data::finalize(THD *thd, Log_event *end_event, XID_STATE *xs)
 
   @see binlog_cache_data::finalize
  */
+// flyyear 刷新binlog的缓存
 int
 binlog_cache_data::flush(THD *thd, my_off_t *bytes_written, bool *wrote_xid)
 {
@@ -1562,6 +1563,7 @@ binlog_cache_data::flush(THD *thd, my_off_t *bytes_written, bool *wrote_xid)
                     };);
 
     if (!error)
+      // flyyear 这面写入gtid_event事件到binlog里面
       if ((error= mysql_bin_log.write_gtid(thd, this, &writer)))
         thd->commit_error= THD::CE_FLUSH_ERROR;
     if (!error)
@@ -8584,6 +8586,7 @@ TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
       DBUG_RETURN(RESULT_ABORTED);
     }
     // flyyear 这面做binlog文件的磁盘fsync和提交到存储引擎
+  //  sleep(10);
     if (ordered_commit(thd, all, skip_commit))
       DBUG_RETURN(RESULT_INCONSISTENT);
 
@@ -8621,6 +8624,7 @@ TC_LOG::enum_result MYSQL_BIN_LOG::commit(THD *thd, bool all)
    The current "global" transaction_counter is stepped and its new value
    is assigned to the transaction.
  */
+// flyyear 刷新每一个线程的缓存
 std::pair<int,my_off_t>
 MYSQL_BIN_LOG::flush_thread_caches(THD *thd)
 {
@@ -8657,6 +8661,7 @@ MYSQL_BIN_LOG::flush_thread_caches(THD *thd)
  */
 
 // flyyear 该函数将事务的日志写入到binlog文件的buff中
+// 这面会写入事务的各种事件信息，gtid在这面产生
 int
 MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
                                          bool *rotate_var,
@@ -8693,6 +8698,7 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
   // 将binlog cache 写入到binlog中
   for (THD *head= first_seen ; head ; head = head->next_to_commit)
   {
+    // flyyear 刷新每一个线程的缓存
     std::pair<int,my_off_t> result= flush_thread_caches(head);
     total_bytes+= result.second;
     if (flush_error == 1)
@@ -9369,6 +9375,8 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 
   // flyyear
   // get_sync_period在这面就是获得sync_binlog的值，这面表示如果sync_binlog值为1，就是每个事务都要刷新binlog
+  // 进行binlog的从binlog buffer或者临时文件写入到binlog文件(注意是写到kernel
+  // buffer还没做fsync)，同时触发innodb的组提交逻辑,innodb组提交的逻辑代码是阿里的印风兄写的，我请教过他。
   update_binlog_end_pos_after_sync= (get_sync_period() == 1);
   DBUG_PRINT("flyyear", ("get_sync_period: %u, binlog_end_pos_after_sync: %d", get_sync_period(), update_binlog_end_pos_after_sync));
 
@@ -9388,7 +9396,9 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
       sql_print_error("Failed to run 'after_flush' hooks");
       flush_error= ER_ERROR_ON_WRITE;
     }
-
+    
+    // 如果sync_binlog=1则 这里不发信号给dump 如果不是1则发信号进行dump
+    // 即当sync_binlog部位1时，在binlog的flush阶段就已经发送binlog给从库了
     if (!update_binlog_end_pos_after_sync)
       update_binlog_end_pos();
     DBUG_EXECUTE_IF("crash_commit_after_log", DBUG_SUICIDE(););
@@ -9447,6 +9457,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     sync_error= result.first;
   }
 
+  // 如果sync_binlog为1 才会走到下面
   if (update_binlog_end_pos_after_sync)
   {
     THD *tmp_thd= final_queue;
@@ -9457,7 +9468,9 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     while (tmp_thd->next_to_commit != NULL)
       tmp_thd= tmp_thd->next_to_commit;
     if (flush_error == 0 && sync_error == 0)
+    {
       update_binlog_end_pos(tmp_thd->get_trans_pos());
+    }
   }
 
   DEBUG_SYNC(thd, "bgc_after_sync_stage_before_commit_stage");
@@ -9519,6 +9532,7 @@ commit_stage:
       which would reduce performance.
     */
     // flyyear 进入提交函数
+    // 引擎层的提交
     process_commit_stage_queue(thd, commit_queue);
     mysql_mutex_unlock(&LOCK_commit);
     /*

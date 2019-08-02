@@ -3145,6 +3145,7 @@ static int generate_server_uuid()
                         current_pid,
                         (ulong)server_start_time, thd->status_var.bytes_sent);
 
+  // flyyear server_uuid 和MySQL启动时间、线程LWP和随机内存地址有关
   const time_t save_server_start_time= server_start_time;
   server_start_time+= ((ulonglong)current_pid << 48) + current_pid;
   thd->status_var.bytes_sent= (ulonglong)thd;

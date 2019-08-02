@@ -30,7 +30,7 @@ enum enum_wait_point {
   WAIT_AFTER_COMMIT
 };
 
-// flyyear 这面怎么默认是AFTER_COMMIT？？不应该是AFTER_SYNC吗？？
+// flyyear 下面在变量设置的时候是after_sync
 static ulong rpl_semi_sync_master_wait_point= WAIT_AFTER_COMMIT;
 
 static bool SEMI_SYNC_DUMP= true;
@@ -325,7 +325,7 @@ static MYSQL_SYSVAR_ENUM(
   "to end successfully.",
   NULL,                            /* check()  */
   NULL,                            /* update() */
-  WAIT_AFTER_SYNC,                 /* default  */
+  WAIT_AFTER_SYNC,                 /* default  */  // 这面默认值是after_sync, 所以一直都是after_sync
   &wait_point_typelib              /* typelib  */
 );
 

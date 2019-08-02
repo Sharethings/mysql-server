@@ -71,6 +71,7 @@ using binary_log::Format_description_event;
 
 class Slave_reporting_capability;
 class String;
+// flyyear 原来sql_mode是ulonglong这种格式的
 typedef ulonglong sql_mode_t;
 typedef struct st_db_worker_hash_entry db_worker_hash_entry;
 extern "C" MYSQL_PLUGIN_IMPORT char server_version[SERVER_VERSION_LENGTH];
@@ -360,6 +361,9 @@ enum enum_base64_output_mode {
   2. Other information on how to print the events, e.g. short_form,
      hexdump_from.  These are not dependent on the last event.
 */
+// flyyear 这个结构体的作用就是告诉mysqlbinlog怎么去打印event信息
+// 保存两种信息 上一个输出的event里面的db flag2 sql_mode,为了给后面的use和set命令使用
+// 怎么输出event的信息
 typedef struct st_print_event_info
 {
   /*
@@ -793,6 +797,7 @@ public:
                                    *description_event, my_bool crc_check,
                                    read_log_event_filter_function f);
   /* print*() functions are used by mysqlbinlog */
+  // flyyear 虚函数 子类实现该函数
   virtual void print(FILE* file, PRINT_EVENT_INFO* print_event_info) = 0;
   void print_timestamp(IO_CACHE* file, time_t* ts);
   void print_header(IO_CACHE* file, PRINT_EVENT_INFO* print_event_info,
@@ -1010,6 +1015,7 @@ private:
     unless impossible at all). When it's sequential it further  breaks into
     ASYNChronous and SYNChronous.
   */
+  // flyyear mts event执行模式
   enum enum_mts_event_exec_mode
   {
     /*
@@ -3922,7 +3928,7 @@ static inline bool copy_event_cache_to_file_and_reinit(IO_CACHE *cache,
                                                        FILE *file,
                                                        bool flush_stream)
 {
-  return         
+  return
     my_b_copy_to_file(cache, file) ||
     (flush_stream ? (fflush(file) || ferror(file)) : 0) ||
     reinit_io_cache(cache, WRITE_CACHE, 0, FALSE, TRUE);

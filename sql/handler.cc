@@ -1571,6 +1571,7 @@ int commit_owned_gtids(THD *thd, bool all, bool *need_clear_owned_gtid_ptr)
   DBUG_ENTER("commit_owned_gtids(...)");
   int error= 0;
 
+  // 这面说明如果不记binlog等，就不需要gtid了
   if ((!opt_bin_log || (thd->slave_thread && !opt_log_slave_updates)) &&
       (all || !thd->in_multi_stmt_transaction_mode()) &&
       !thd->is_operating_gtid_table_implicitly &&
@@ -7975,7 +7976,7 @@ int handler::ha_reset()
   DBUG_RETURN(retval);
 }
 
-
+// flyyear 处理插入一条语句的情况
 int handler::ha_write_row(uchar *buf)
 {
   int error;

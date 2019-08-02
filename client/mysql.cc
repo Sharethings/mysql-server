@@ -2144,6 +2144,12 @@ static int read_and_execute(bool interactive)
 
     if (!interactive)
     {
+    const char *data;
+    size_t length;
+    if (mysql_session_track_get_first(&mysql, SESSION_TRACK_GTIDS, &data, &length) == 0)
+    {
+      sprintf(&glob_buffer[glob_buffer.length()], ", GTID: %s", data);
+    }
       /*
         batch_readline can return 0 on EOF or error.
         In that case, we need to double check that we have a valid
@@ -2195,6 +2201,12 @@ static int read_and_execute(bool interactive)
     }
     else
     {
+    const char *data;
+    size_t length;
+    if (mysql_session_track_get_first(&mysql, SESSION_TRACK_GTIDS, &data, &length) == 0)
+    {
+      sprintf(&glob_buffer[glob_buffer.length()], ", GTID: %s", data);
+    }
       char *prompt= (char*) (ml_comment ? "   /*> " :
                              glob_buffer.is_empty() ?  construct_prompt() :
 			     !in_string ? "    -> " :

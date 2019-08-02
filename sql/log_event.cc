@@ -1429,6 +1429,7 @@ err:
   constructors.
 */
 // flyyear relaylog 这面已经读取到event，到这面来处理
+// 这面是一个一个读取event_log信息
 Log_event* Log_event::read_log_event(const char* buf, uint event_len,
 				     const char **error,
                                      const Format_description_log_event *description_event,
@@ -13208,6 +13209,7 @@ Update_rows_log_event::do_exec_row(const Relay_log_info *const rli)
 #endif /* !defined(MYSQL_CLIENT) && defined(HAVE_REPLICATION) */
 
 #ifdef MYSQL_CLIENT
+// flyyear 这面类似update_rows_log_evnet实现了父类的print函数
 void Update_rows_log_event::print(FILE *file,
 				  PRINT_EVENT_INFO* print_event_info)
 {
@@ -13565,6 +13567,7 @@ Gtid_log_event::Gtid_log_event(THD* thd_arg, bool using_trans,
   DBUG_VOID_RETURN;
 }
 
+// flyyear 在gtid_log_event的构造函数里面生成了gtid信息
 Gtid_log_event::Gtid_log_event(uint32 server_id_arg, bool using_trans,
                                int64 last_committed_arg,
                                int64 sequence_number_arg,
@@ -13651,26 +13654,44 @@ Gtid_log_event::print(FILE *file, PRINT_EVENT_INFO *print_event_info)
                   last_committed, sequence_number,
                   may_have_sbr_stmts ? "no" : "yes");
     }
+    /*
+      The applier thread can always use "READ COMMITTED" isolation for
+      transactions containing only RBR events (Table_map + Rows).
+
+      This would prevent some deadlock issues because InnoDB doesn't
+      acquire GAP locks in "READ COMMITTED" isolation level since
+      MySQL 5.7.18.
+    */
+    if (!may_have_sbr_stmts)
+    {
+      my_b_printf(head,
+                  "/*!50718 SET TRANSACTION ISOLATION LEVEL "
+                  "READ COMMITTED*/%s\n",
+                  print_event_info->delimiter);
+    }
+
+    to_string(buffer);
+    my_b_printf(head, "%s%s\n", buffer, print_event_info->delimiter);
   }
 
-  /*
-    The applier thread can always use "READ COMMITTED" isolation for
-    transactions containing only RBR events (Table_map + Rows).
-
-    This would prevent some deadlock issues because InnoDB doesn't
-    acquire GAP locks in "READ COMMITTED" isolation level since
-    MySQL 5.7.18.
-  */
-  if (!may_have_sbr_stmts)
-  {
-    my_b_printf(head,
-                "/*!50718 SET TRANSACTION ISOLATION LEVEL "
-                "READ COMMITTED*/%s\n",
-                print_event_info->delimiter);
-  }
-
-  to_string(buffer);
-  my_b_printf(head, "%s%s\n", buffer, print_event_info->delimiter);
+//  /*
+//    The applier thread can always use "READ COMMITTED" isolation for
+//    transactions containing only RBR events (Table_map + Rows).
+//
+//    This would prevent some deadlock issues because InnoDB doesn't
+//    acquire GAP locks in "READ COMMITTED" isolation level since
+//    MySQL 5.7.18.
+//  */
+//  if (!may_have_sbr_stmts)
+//  {
+//    my_b_printf(head,
+//                "/*!50718 SET TRANSACTION ISOLATION LEVEL "
+//                "READ COMMITTED*/%s\n",
+//                print_event_info->delimiter);
+//  }
+//
+//  to_string(buffer);
+//  my_b_printf(head, "%s%s\n", buffer, print_event_info->delimiter);
 }
 #endif
 

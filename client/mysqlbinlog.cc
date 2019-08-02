@@ -405,6 +405,7 @@ static my_bool prev_is_xid= FALSE;
 static uint opt_server_id_bits = 0;
 static ulong opt_server_id_mask = 0;
 Sid_map *global_sid_map= NULL;
+// flyyear全局变量锁 用来保护global_sid_map
 Checkable_rwlock *global_sid_lock= NULL;
 Gtid_set *gtid_set_included= NULL;
 Gtid_set *gtid_set_excluded= NULL;
@@ -2523,6 +2524,7 @@ static Exit_status dump_single_log(PRINT_EVENT_INFO *print_event_info,
 
   Exit_status rc= OK_CONTINUE;
 
+  // flyyear  read-from-remote-master 参数
   switch (opt_remote_proto)
   {
     case BINLOG_LOCAL:
@@ -2530,6 +2532,7 @@ static Exit_status dump_single_log(PRINT_EVENT_INFO *print_event_info,
     break;
     case BINLOG_DUMP_NON_GTID:
     case BINLOG_DUMP_GTID:
+    // flyyear 连接到远端
       rc= dump_remote_log_entries(print_event_info, logname);
     break;
     default:
@@ -2573,7 +2576,9 @@ static Exit_status dump_multiple_logs(int argc, char **argv)
   {
     if (i == argc - 1) // last log, --stop-position applies
       stop_position= save_stop_position;
-    if ((rc= dump_single_log(&print_event_info, argv[i])) != OK_CONTINUE)
+    rc = dump_single_log(&print_event_info, argv[i]);
+    //if ((rc= dump_single_log(&print_event_info, argv[i])) != OK_CONTINUE)
+    if(rc != OK_CONTINUE)
       break;
 
     // For next log, --start-position does not apply
@@ -2725,6 +2730,7 @@ static int get_dump_flags()
   @retval OK_STOP No error, but the end of the specified range of
   events to process has been reached and the program should terminate.
 */
+// flyyear 从远端读取日志，然后打印出来
 static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
                                            const char* logname)
 {
@@ -2750,6 +2756,7 @@ static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
     we cannot re-use the same connection as before, because it is now dead
     (COM_BINLOG_DUMP kills the thread when it finishes).
   */
+  // flyyear 连接远端主库
   if ((retval= safe_connect()) != OK_CONTINUE)
     DBUG_RETURN(retval);
   net= &mysql->net;
@@ -2855,6 +2862,7 @@ static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
     DBUG_ASSERT(command_size == (allocation_size - 1));
   }
 
+  // flyyear 发送从库的连接信息
   if (simple_command(mysql, command, command_buffer, command_size, 1))
   {
     error("Got fatal error sending the log dump command.");
@@ -2869,6 +2877,7 @@ static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
     Log_event *ev= NULL;
     Log_event_type type= binary_log::UNKNOWN_EVENT;
 
+    // flyyear 读取主库发送过来的数据
     len= cli_safe_read(mysql, NULL);
     if (len == packet_error)
     {
@@ -3315,6 +3324,7 @@ static Exit_status check_header(IO_CACHE* file,
   @retval OK_STOP No error, but the end of the specified range of
   events to process has been reached and the program should terminate.
 */
+// flyyear 读取本地binlog信息
 static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
                                           const char* logname)
 {
@@ -3401,6 +3411,7 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
     char llbuff[21];
     my_off_t old_off = my_b_tell(file);
 
+    // flyyear 这面一个一个读取event
     Log_event* ev = Log_event::read_log_event(file, glob_description_event,
                                               opt_verify_binlog_checksum,
                                               rewrite_db_filter);
@@ -3560,6 +3571,7 @@ inline void gtid_client_cleanup()
 */
 inline bool gtid_client_init()
 {
+  // flyyear 初始化全局变量
   bool res=
     (!(global_sid_lock= new Checkable_rwlock) ||
      !(global_sid_map= new Sid_map(global_sid_lock)) ||
@@ -3702,6 +3714,7 @@ int main(int argc, char** argv)
     fprintf(result_file,
             "/*!50700 SET @@SESSION.RBR_EXEC_MODE=IDEMPOTENT*/;\n\n");
 
+  // flyyear dump binlog信息
   retval= dump_multiple_logs(argc, argv);
 
   if (flashback_opt) {
@@ -3715,7 +3728,7 @@ int main(int argc, char** argv)
       printf("%s", event_str->ptr());
      }
      delete binlog_events;
-     fprintf(result_file, "DELIMITER; \n");
+     fprintf(result_file, "DELIMITER ;\n");
   }
 
   if (!only_event_info) {

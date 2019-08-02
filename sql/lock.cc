@@ -1190,6 +1190,10 @@ bool Global_read_lock::make_global_read_lock_block_commit(THD *thd)
   if (m_state != GRL_ACQUIRED)
     DBUG_RETURN(0);
 
+//  DBUG_PRINT("flyyear", ("make_global_read_lock_block_commit before sleep"));
+//  sleep(2);
+//  DBUG_PRINT("flyyear", ("make_global_read_lock_block_commit after sleep"));
+
   MDL_REQUEST_INIT(&mdl_request,
                    MDL_key::COMMIT, "", "", MDL_SHARED, MDL_EXPLICIT);
 

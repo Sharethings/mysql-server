@@ -310,6 +310,7 @@ enum Log_event_type
     is code for handling it, but which can be ignored if it is not
     recognized.
   */
+  // flyyear 发送可忽略的数据到从库，如果从库可以处理那就处理，如果无法处理则可忽略
   IGNORABLE_LOG_EVENT= 28,
   ROWS_QUERY_LOG_EVENT= 29,
 

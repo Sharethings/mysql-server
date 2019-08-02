@@ -342,6 +342,7 @@ public:
   bool has_force_copy_fields() const { return force_copy_fields; }
   bool has_with_distinct()     const { return with_distinct; }
 
+  // flyyear 聚合函数的类型
   enum Sumfunctype
   { COUNT_FUNC, COUNT_DISTINCT_FUNC, SUM_FUNC, SUM_DISTINCT_FUNC, AVG_FUNC,
     AVG_DISTINCT_FUNC, MIN_FUNC, MAX_FUNC, STD_FUNC,

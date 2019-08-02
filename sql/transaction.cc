@@ -433,6 +433,7 @@ bool trans_rollback_implicit(THD *thd)
   @retval TRUE   Failure
 */
 
+// flyyear 这面开始提交执行
 bool trans_commit_stmt(THD *thd)
 {
   DBUG_ENTER("trans_commit_stmt");

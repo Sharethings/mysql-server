@@ -480,6 +480,7 @@ wait_for_last_committed_trx(Relay_log_info* rli,
 
     DBUG_ASSERT(rli->gaq->len >= 2); // there's someone to wait
 
+    // flyyear 等待前面last_commit的event做完
     thd->ENTER_COND(&rli->logical_clock_cond, &rli->mts_gaq_LOCK,
                     &stage_worker_waiting_for_commit_parent, &old_stage);
     do

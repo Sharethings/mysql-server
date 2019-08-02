@@ -90,6 +90,7 @@ static void init_mdl_psi_keys(void)
   belonging to certain namespace.
 */
 
+// flyyear 这面定义等待状态
 PSI_stage_info MDL_key::m_namespace_to_wait_state_name[NAMESPACE_END]=
 {
   {0, "Waiting for global read lock", 0},
@@ -3561,6 +3562,9 @@ MDL_context::acquire_lock(MDL_request *mdl_request, ulong lock_wait_timeout)
   /* Do some work outside the critical section. */
   set_timespec(&abs_timeout, lock_wait_timeout);
 
+//  DBUG_PRINT("flyyear", ("acquire_lock before sleep"));
+//  sleep(2);
+//  DBUG_PRINT("flyyear", ("acquire_lock after sleep"));
   if (try_acquire_lock_impl(mdl_request, &ticket))
     return TRUE;
 

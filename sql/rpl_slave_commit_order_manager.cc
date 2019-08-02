@@ -77,6 +77,7 @@ bool Commit_order_manager::wait_for_its_turn(Slave_worker *worker,
     DBUG_PRINT("info", ("Worker %lu is waiting for commit signal", worker->id));
 
     mysql_mutex_lock(&m_mutex);
+    // flyyear 等待前一个work回放完成
     thd->ENTER_COND(cond, &m_mutex,
                     &stage_worker_waiting_for_its_turn_to_commit,
                     &old_stage);
