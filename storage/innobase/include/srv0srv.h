@@ -612,6 +612,7 @@ extern ulong	srv_debug_compress;
 
 #ifndef UNIV_HOTBACKUP
 /** Types of threads existing in the system. */
+// flyyear innodb系统存在的线程的类型
 enum srv_thread_type {
 	SRV_NONE,			/*!< None */
 	SRV_WORKER,			/*!< threads serving parallelized

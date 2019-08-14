@@ -1381,6 +1381,8 @@ int _my_b_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
   the write buffer before we are ready with it.
 */
 
+// flyyear 添加块到写缓存里面
+// 需要加锁
 int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count)
 {
   size_t rest_length,length;
@@ -1398,11 +1400,12 @@ int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count)
   if (Count <= rest_length)
     goto end;
   // flyyear 缓冲区不够用，把剩下的写满
+  // 将Buffer里面的内容拷贝到info->write_pos里面
   memcpy(info->write_pos, Buffer, rest_length);
   Buffer+=rest_length;
   Count-=rest_length;
   info->write_pos+=rest_length;
-  // flyyear 刷新到文件系统里面去
+  // flyyear 将缓存中的内容append到文件中，重置写buffer
   DBUG_PRINT("flyyear", ("in my_b_append flush to disk"));
   if (my_b_flush_io_cache(info,0))
   {
@@ -1414,6 +1417,7 @@ int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count)
   if (Count >= IO_SIZE)
   {					/* Fill first intern buffer */
     // flyyear 将大于IO_SIZE的部分写入到文件里面去
+    // 并且刷盘了
     length=Count & (size_t) ~(IO_SIZE-1);
     if (mysql_file_write(info->file,Buffer, length, info->myflags | MY_NABP))
     {
@@ -1430,6 +1434,7 @@ end:
   // 1. goto过来，表示缓冲区够用
   // 2. 整个流程走下来，剩下的数据也可以放到缓冲区里面去了
   // 将Buffer数据拷贝到文件缓存里面
+  DBUG_PRINT("flyyear", ("in my_b_append end"));
   memcpy(info->write_pos,Buffer,(size_t) Count);
   info->write_pos+=Count;
   unlock_append_buffer(info);
@@ -1518,12 +1523,13 @@ int my_block_write(IO_CACHE *info, const uchar *Buffer, size_t Count,
 #define UNLOCK_APPEND_BUFFER if (need_append_buffer_lock) \
   unlock_append_buffer(info);
 
-// flyyear 刷新缓存
+// flyyear 刷新IO_CACHE到文件的OS缓存中，并不进行强制刷盘
 int my_b_flush_io_cache(IO_CACHE *info,
                         int need_append_buffer_lock MY_ATTRIBUTE((unused)))
 {
   size_t length;
   my_off_t pos_in_file;
+  // flyyear 对于SEQ_READ_APPEDN类型的IO_CACHE需要加锁
   my_bool append_cache= (info->type == SEQ_READ_APPEND);
   DBUG_ENTER("my_b_flush_io_cache");
   DBUG_PRINT("enter", ("cache: 0x%lx", (long) info));
@@ -1544,6 +1550,7 @@ int my_b_flush_io_cache(IO_CACHE *info,
     }
     LOCK_APPEND_BUFFER;
 
+    // flyyear length是写缓冲区中数据的长度
     if ((length=(size_t) (info->write_pos - info->write_buffer)))
     {
       /*
@@ -1555,6 +1562,7 @@ int my_b_flush_io_cache(IO_CACHE *info,
       if (info->share)
         copy_to_read_buffer(info, info->write_buffer, length);
 
+      // flyyear 保存 用于后面
       pos_in_file=info->pos_in_file;
       /*
 	If we have append cache, we always open the file with
@@ -1571,8 +1579,10 @@ int my_b_flush_io_cache(IO_CACHE *info,
 	if (!append_cache)
 	  info->seek_not_done=0;
       }
+      // flyyear 如果不是append，查找到写入点
       if (!append_cache)
 	info->pos_in_file+=length;
+      // flyyear 这一步是 write_cache 的精华，获得总的 buffer 大小，然后减去当前文件 pos + length 之和，剩余部分就是文件中还没有对齐的地方，下一个写入这么大的数据，就可以满足一次对齐写所以当 buffer 比较小的时候，为了满足这种对齐的要求，可使用的 buffer 就会比较小，从而触发更多的文件 IO 操作
       info->write_end= (info->write_buffer+info->buffer_length-
 			((pos_in_file+length) & (IO_SIZE-1)));
 

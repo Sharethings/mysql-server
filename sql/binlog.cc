@@ -71,6 +71,7 @@ static int limit_unsafe_warning_count= 0;
 
 // 定义一个全局变量来
 static handlerton *binlog_hton;
+// flyyear binlog顺序提交的变量
 bool opt_binlog_order_commits= true;
 
 const char *log_bin_index= 0;
@@ -6928,9 +6929,9 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
   */
   // flyyear ralaylog超过了限制，但是如果在同一个事务里面不能将部分event放到下一个relaylog里面
   // 这面就可以用来判断一个event是否在一个事物里面了
+  // 一个事务的所有event必须放在同一个binlog里面
   bool can_rotate= mi->transaction_parser.is_not_inside_transaction();
 
-#ifndef DBUG_OFF
   if ((uint) my_b_append_tell(&log_file) >
       DBUG_EVALUATE_IF("rotate_slave_debug_group", 500, max_size) &&
       !can_rotate)
@@ -6938,13 +6939,12 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
     DBUG_PRINT("info",("Postponing the rotation by size waiting for "
                        "the end of the current transaction."));
   }
-#endif
 
   // Flush and sync
   bool error= false;
   // flyyear 这面直接就是0了，即不强制刷新到磁盘的，即flush_and_sync不是强制刷新的
-  // 这面为0表示没有刷新到磁盘
-  // 如果把下面的这行注释掉，为啥还是会将relaylog刷新到磁盘呢
+  // 这面每次都会将IO_CACHE里面的内容写到文件系统的文件缓存里面
+  // 但是并不会刷盘
   //if (0 && flush_and_sync(0) == 0 && can_rotate)
   if (flush_and_sync(0) == 0 && can_rotate)
   {
@@ -6979,6 +6979,7 @@ bool MYSQL_BIN_LOG::after_append_to_relay_log(Master_info *mi)
     }
   }
 
+  // flyyear 通过条件变量告诉sql线程，可以进行回放了
   signal_update();
 
   DBUG_RETURN(error);
@@ -7021,16 +7022,23 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
   DBUG_ASSERT(is_relay_log);
   mysql_mutex_assert_owner(&LOCK_log);
 
+
   // write data
   bool error= false;
-  // flyyear 这面写入到ralaylog 缓存里面, 但是这面在mac系统里面直接刷新到磁盘里面去了，
+  // flyyear 这面写入到ralaylog IO_CACHE缓存里面
   // 难道是系统的问题吗?
   // 把下面的after_append_to_relay_log给注视掉之后发现，没有影响relaylog的正常的写入，只是里面的signal_update()没有正常的调用了
   // 这面的文件的刷盘到底是谁做的呢？难道是文件系统做的，这也太频繁了吧
+  // 回答上面的问题，这面只是刷了缓存而已，并没有做刷盘的操作的，当把下面的after_appedn_to_relay_log注释掉后，发现buff剩余空间一直在变小，但是
+  // relaylog里面并没有日志信息，在after_append_to_relay_log里面会有调用刷盘的操作my_b_flush_io_cache
+  DBUG_PRINT("flyyear", ("in append_buff, file name is: %d", log_file.file));
+  // flyyear
+  // 这面已经写入到了缓存IO_CACHE里面
+  // 对于刷盘的操作，这面是通过操作系统来自己刷盘的
   if (my_b_append(&log_file,(uchar*) buf,len) == 0)
   {
     bytes_written += len;
-    // flyyear 这面写入到relaylog文件里面
+    // 这面根据判读是否需要刷盘到relaylog文件里面,并且通知sql线程起来干活了
     error= after_append_to_relay_log(mi);
   }
   else
@@ -7043,9 +7051,9 @@ bool MYSQL_BIN_LOG::append_buffer(const char* buf, uint len, Master_info *mi)
 
 bool MYSQL_BIN_LOG::flush_and_sync(const bool force)
 {
-  // flyyear 为什么测试的时候
   mysql_mutex_assert_owner(&LOCK_log);
 
+  // flyyear 将IO_CACHE里面的内容写入到文件系统层面的文件缓存，及OS缓存里面
   if (flush_io_cache(&log_file))
     return 1;
 
@@ -8692,10 +8700,12 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
   */
   ha_flush_logs(NULL, true);
   DBUG_EXECUTE_IF("crash_after_flush_engine_log", DBUG_SUICIDE(););
+  // flyyear 这面根据链表生成gtid的信息
   assign_automatic_gtids_to_flush_group(first_seen);
   /* Flush thread caches to binary log. */
-  // flyyear 将commit队列中线程一个一个取出，然后执行flush_thread_caches，
-  // 将binlog cache 写入到binlog中
+  // flyyear 将commit队列中线程一个一个取出，
+  // 这面其实就是将binlog信息刷新到缓存里面, 然后执行flush_thread_caches，
+  // 这面是刷新到缓存中IO_CACHE里面吧
   for (THD *head= first_seen ; head ; head = head->next_to_commit)
   {
     // flyyear 刷新每一个线程的缓存
@@ -8976,6 +8986,7 @@ MYSQL_BIN_LOG::sync_binlog_file(bool force)
   unsigned int sync_period= get_sync_period();
   // flyyear 如果是强制刷新或者event的个数大于设置的sync_period的个数，则会进行刷新
   DBUG_PRINT("flyyear", ("force : %u, sync_period: %d, sync_count: %d", force, sync_period, sync_counter));
+  // flyyear 这面通过获取sync_period的值，因为如果sync_binlog设置为1，则强制刷盘了
   if (force || (sync_period && ++sync_counter >= sync_period))
  // if (1 || (1000 && ++sync_counter >= 1000))
   {
@@ -8999,6 +9010,7 @@ MYSQL_BIN_LOG::sync_binlog_file(bool force)
     //sleep(20);
     if (DBUG_EVALUATE_IF("simulate_error_during_sync_binlog_file", 1,
                     // flyyear 这面同步binlog buff中数据到disk
+                    // 这面直接刷的就是log_file变量的file文件
                          mysql_file_sync(log_file.file,
                                          MYF(MY_WME | MY_IGNORE_BADFD))))
     {
@@ -9268,6 +9280,8 @@ void MYSQL_BIN_LOG::handle_binlog_flush_or_sync_error(THD *thd,
 // 5. 如果semisync模块配置了rpl_semi_sync_master_wait_point为after_sync,那么当前session将在这里等待备机回复在继续
 // 6. ordered_commit()接下来会最终调用ha_commit_low()在存储引擎层提交
 // 7. 如果rpl_semi_sync_master_wait_point参数为after_commit，当前Session就会在oerder_commit()接下来调用的MYSQL_BIN_LOG::finish_commit()函数里等待备机的回复
+//
+//  组提交是为了优化写日志时的刷磁盘问题,原来每个事务都会刷盘，现在是一个链表
 int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 {
   DBUG_ENTER("MYSQL_BIN_LOG::ordered_commit");
@@ -9317,6 +9331,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   /*
     Stage #1: flushing transactions to binary log
     // flyyear 这面只是将事务刷新到binlog 的buff里面
+    // 并且会刷新到OS的文件缓存里面去了
 
     While flushing, we allow new threads to enter and will process
     them in due time. Once the queue was empty, we cannot reap
@@ -9370,13 +9385,15 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
                                                  &wait_queue);
 
   if (flush_error == 0 && total_bytes > 0)
+    // flyyear 这面只是将binlog信息写入到OS文件系统的文件缓存里面,
+    // 是否会执行fsync操作，取决于OS缓存的大小, 所以这个取决于OS
     flush_error= flush_cache_to_file(&flush_end_pos);
   DBUG_EXECUTE_IF("crash_after_flush_binlog", DBUG_SUICIDE(););
 
   // flyyear
   // get_sync_period在这面就是获得sync_binlog的值，这面表示如果sync_binlog值为1，就是每个事务都要刷新binlog
   // 进行binlog的从binlog buffer或者临时文件写入到binlog文件(注意是写到kernel
-  // buffer还没做fsync)，同时触发innodb的组提交逻辑,innodb组提交的逻辑代码是阿里的印风兄写的，我请教过他。
+  // buffer还没做fsync)，同时触发innodb的组提交逻辑
   update_binlog_end_pos_after_sync= (get_sync_period() == 1);
   DBUG_PRINT("flyyear", ("get_sync_period: %u, binlog_end_pos_after_sync: %d", get_sync_period(), update_binlog_end_pos_after_sync));
 
@@ -9398,7 +9415,8 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     }
     
     // 如果sync_binlog=1则 这里不发信号给dump 如果不是1则发信号进行dump
-    // 即当sync_binlog部位1时，在binlog的flush阶段就已经发送binlog给从库了
+    // 即当sync_binlog不为1时，在binlog的flush阶段就已经发送binlog给从库了
+    // 这个意思就是说当sync_binlog不为1时，我不管数据丢不丢的，和我数据库没有任何关系的,为了提高性能，赶紧通过dump线程去读数据
     if (!update_binlog_end_pos_after_sync)
       update_binlog_end_pos();
     DBUG_EXECUTE_IF("crash_commit_after_log", DBUG_SUICIDE(););
@@ -9417,7 +9435,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   /*
     Stage #2: Syncing binary log file to disk
   */
-  // flyyear 下面将binlog buff 写入到磁盘里面去
+  // flyyear 下面将binlog 文件缓存写入到磁盘里面去
 
   if (change_stage(thd, Stage_manager::SYNC_STAGE, wait_queue, &LOCK_log, &LOCK_sync))
   {
@@ -9434,6 +9452,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     it is considered as a special case and delay will be executed
     for every group just like how it is done when sync_binlog= 1.
   */
+  //  如果sync_binlo设置值比较大，这面不用等待
   if (!flush_error && (sync_counter + 1 >= get_sync_period()))
     // flyyear 这面进行等待
     // opt_binlog_group_commit_sync_no_delay_count
@@ -9443,6 +9462,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     // 任何一个满足就可以往下走
     // 因为有这个等待，可以让更多的事务的binlog通过一次写binlog文件磁盘来完成提交，获得更高的吞吐量
     // 这俩值默认都是0, 所以不会在这面等待
+    // 这面在这等待的话，可能会导致如果主库宕掉了，是的更多的事务没有正确的返回，因为等在了这面,返回给业务的就是操作失败了
     stage_manager.wait_count_or_timeout(opt_binlog_group_commit_sync_no_delay_count,
                                         opt_binlog_group_commit_sync_delay,
                                         Stage_manager::SYNC_STAGE);
@@ -9452,8 +9472,8 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   if (flush_error == 0 && total_bytes > 0)
   {
     DEBUG_SYNC(thd, "before_sync_binlog_file");
-    // flyyear 这面将binlog buff 同步到disk
-    std::pair<bool, bool> result= sync_binlog_file(false); // flyyear 这面参数false，说明不是强制刷新的
+    // flyyear 这面将binlog文件缓存同步到disk
+    std::pair<bool, bool> result= sync_binlog_file(false); // flyyear 这面参数false，说明不是强制刷新的, 虽然这面是false，但是如果sync_binlog设置为1，也会强制刷盘的
     sync_error= result.first;
   }
 
@@ -9469,6 +9489,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
       tmp_thd= tmp_thd->next_to_commit;
     if (flush_error == 0 && sync_error == 0)
     {
+      // 这面更新最后的binlog的点位
       update_binlog_end_pos(tmp_thd->get_trans_pos());
     }
   }

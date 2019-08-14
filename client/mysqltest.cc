@@ -845,6 +845,7 @@ public:
         perror("fwrite");
       }
     }
+    // flyyear 将文件流刷盘
     fflush(stderr);
 
     DBUG_VOID_RETURN;

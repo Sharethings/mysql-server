@@ -158,6 +158,7 @@ public:
 	@param[in]	id	transaction id to check against the view
 	@param[in]	name	table name
 	@return whether the view sees the modifications of id. */
+  // flyyear  检查修改是否对该MVCC可见
 	bool changes_visible(
 		trx_id_t		id,
 		const table_name_t&	name) const
@@ -298,15 +299,18 @@ private:
 private:
 	/** The read should not see any transaction with trx id >= this
 	value. In other words, this is the "high water mark". */
+  // flyyear 高水位 看不到的事务 >=都是看不到的
 	trx_id_t	m_low_limit_id;
 
 	/** The read should see all trx ids which are strictly
 	smaller (<) than this value.  In other words, this is the
 	low water mark". */
+  // flyyear 低水位 小于这个值的都能看到
 	trx_id_t	m_up_limit_id;
 
 	/** trx id of creating transaction, set to TRX_ID_MAX for free
 	views. */
+  // flyyear 64位 标记事务id
 	trx_id_t	m_creator_trx_id;
 
 	/** Set of RW transactions that was active when this snapshot

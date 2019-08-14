@@ -2828,6 +2828,7 @@ void Log_event::print_base64(IO_CACHE* file,
         map= new Table_map_log_event((const char*)ptr, fb_size, &fd_evt);
         print_event_info->m_table_map.set_table(map->get_table_id(), map);
         break;
+        // flyyear 这面直接修改一下binary_log的格式就可以了，打印出来的日志就行我们自己想要的了
       case binary_log::WRITE_ROWS_EVENT:
         ptr[EVENT_TYPE_OFFSET]= binary_log::DELETE_ROWS_EVENT;
         break;
@@ -11832,6 +11833,10 @@ int Rows_log_event::pack_info(Protocol *protocol)
 #endif
 
 #ifdef MYSQL_CLIENT
+// flyyear 对于rows格式的event打印 都是通过print_helper
+// 三种 Delete_row_log_event
+//      Write_rows_log_event
+//      Update_row_log_event
 void Rows_log_event::print_helper(FILE *file,
                                   PRINT_EVENT_INFO *print_event_info,
                                   char const *const name)
@@ -11845,6 +11850,7 @@ void Rows_log_event::print_helper(FILE *file,
     my_b_printf(head, "\t%s: table id %llu%s\n",
                 name, m_table_id.id(),
                 last_stmt_event ? " flags: STMT_END_F" : "");
+    // flyyear 这面修改行模式输出的event格式
     print_base64(body, print_event_info, !last_stmt_event);
   }
   IO_CACHE *const footer= &print_event_info->footer_cache;
@@ -13449,6 +13455,8 @@ Rows_query_log_event::print(FILE *file,
                                      m_rows_query, MYF(MY_WME))))
       return;
 
+    // flyyear 下面这行打印上面的行 #190805  0:28:56 server id 1  end_log_pos 1823 CRC32 0xb26d8dfc Rows_query
+    //
     print_header(head, print_event_info, FALSE);
     my_b_printf(head, "\tRows_query\n");
     /*

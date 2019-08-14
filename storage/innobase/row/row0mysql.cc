@@ -3518,6 +3518,8 @@ loop:
 
 	dict_table_close(table, FALSE, FALSE);
 
+  DBUG_PRINT("flyyear", ("drop table name %s", drop->table_name));
+  // flyyear 这面删除表
 	if (DB_SUCCESS != row_drop_table_for_mysql_in_background(
 		    drop->table_name)) {
 		/* If the DROP fails for some table, we return, and let the
@@ -3539,6 +3541,8 @@ already_dropped:
 		<< ut_get_name(NULL, drop->table_name)
 		<< " in background drop queue.",
 
+  //DBUG_PRINT("flyyear", ("drop table name %s", drop->table_name));
+//  DBUG_PRINT("flyyear", ("in already_dropped drop table name %s", drop->table_name));
 	ut_free(drop->table_name);
 
 	ut_free(drop);

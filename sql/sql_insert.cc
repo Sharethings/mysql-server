@@ -475,6 +475,7 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
   const uint value_count= values->elements;
   TABLE      *insert_table= NULL;
   // flyyear 为插入语句准备项目
+  DBUG_PRINT("flyyear", ("in mysql_insert values sieze is %d", value_count));
   if (mysql_prepare_insert(thd, table_list, values, false))
     goto exit_without_my_ok;
 
@@ -696,8 +697,10 @@ bool Sql_cmd_insert::mysql_insert(THD *thd,TABLE_LIST *table_list)
     (*next_field)->reset_warnings();
   }
 
+  // flyyear 如果一次插入多条数据，这面遍历
   while ((values= its++))
   {
+    DBUG_PRINT("flyyear", ("cishu elements "));
     if (insert_field_list.elements || !value_count)
     {
       restore_record(insert_table, s->default_values);  // Get empty record

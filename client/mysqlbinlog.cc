@@ -441,6 +441,7 @@ static bool filter_based_on_gtids= false;
 /* It is set to true when BEGIN is found, and false when the transaction ends. */
 static bool in_transaction= false;
 /* It is set to true when GTID is found, and false when the transaction ends. */
+// flyyear 标记GTID是否找到，事务结束置为false
 static bool seen_gtid= false;
 
 static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
@@ -1345,8 +1346,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     if (!short_form)
     {
       if (!flashback_opt)
-        my_b_printf(&print_event_info->head_cache,
-                    "# at %s\n",llstr(pos,ll_buff));
+          my_b_printf(&print_event_info->head_cache,
+                            "# at %s\n",llstr(pos,ll_buff));
     } else if (only_event_info) {
       if (get_position) {
         if (handle_get_position(ev, pos)) {
@@ -1641,6 +1642,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 	my_free(fname);
       break;
     }
+    // flyyear 这面没有break 所以这面会直接使用下面的case
     case binary_log::TABLE_MAP_EVENT:
     {
       Table_map_log_event *map= ((Table_map_log_event *)ev);
@@ -1671,6 +1673,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       }
     }
     // Fall through.
+    // flyyear ROWS_QUERY_LOG_EVENT记录的是原始的SQL
     case binary_log::ROWS_QUERY_LOG_EVENT:
     case binary_log::WRITE_ROWS_EVENT:
     case binary_log::DELETE_ROWS_EVENT:
@@ -1808,13 +1811,14 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     case binary_log::ANONYMOUS_GTID_LOG_EVENT:
     case binary_log::GTID_LOG_EVENT:
     {
+      // flyyear 将变量seen_gitd置为true
       seen_gtid= true;
       if (print_event_info->skipped_event_in_transaction == true)
         if (!flashback_opt)
           fprintf(result_file, "COMMIT /* added by mysqlbinlog */%s\n", print_event_info->delimiter);
       print_event_info->skipped_event_in_transaction= false;
 
-      ev->print(result_file, print_event_info);
+ev->print(result_file, print_event_info);
       if (head->error == -1)
         goto err;
       break;
@@ -2521,7 +2525,7 @@ static Exit_status dump_single_log(PRINT_EVENT_INFO *print_event_info,
                                    const char* logname)
 {
   DBUG_ENTER("dump_single_log");
-
+  
   Exit_status rc= OK_CONTINUE;
 
   // flyyear  read-from-remote-master 参数
@@ -2533,6 +2537,7 @@ static Exit_status dump_single_log(PRINT_EVENT_INFO *print_event_info,
     case BINLOG_DUMP_NON_GTID:
     case BINLOG_DUMP_GTID:
     // flyyear 连接到远端
+    //
       rc= dump_remote_log_entries(print_event_info, logname);
     break;
     default:
@@ -2634,6 +2639,7 @@ static Exit_status dump_multiple_logs(int argc, char **argv)
   @retval ERROR_STOP An error occurred - the program should terminate.
   @retval OK_CONTINUE No error, the program should continue.
 */
+// flyyear 这面可以执行sql语句
 static Exit_status check_master_version()
 {
   DBUG_ENTER("check_master_version");
@@ -2906,6 +2912,7 @@ static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
 
       i.e., acting as a fake slave.
     */
+    // flyyear heartbeat event直接被忽略
     if (type == binary_log::HEARTBEAT_LOG_EVENT)
       continue;
     event_len= len - 1;
@@ -3333,6 +3340,7 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
   uchar tmp_buff[BIN_LOG_HEADER_SIZE];
   Exit_status retval= OK_CONTINUE;
 
+  // flyyear binlog文件 并且文件名不能是-
   if (logname && strcmp(logname, "-") != 0)
   {
     /* read from normal file */
@@ -3434,6 +3442,7 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
       // file->error == 0 means EOF, that's OK, we break in this case
       goto end;
     }
+    // flyyear 一个一个event进行处理
     if ((retval= process_event(print_event_info, ev, old_off, logname)) !=
         OK_CONTINUE)
       goto end;

@@ -183,7 +183,7 @@ public:
   // flyyea 组提交分为下面四个阶段
   // 不同的阶段有不变的四个队列
   enum StageID {
-    FLUSH_STAGE, // 刷binlog
+    FLUSH_STAGE, // 刷binlog到文件缓存
     SYNC_STAGE,  // sync the file to disk 
     COMMIT_STAGE,
     STAGE_COUNTER

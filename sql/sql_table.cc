@@ -10003,6 +10003,7 @@ bool mysql_alter_table(THD *thd, const char *new_db, const char *new_name,
   }
 
   // ALTER TABLE succeeded, delete the backup of the old table.
+  // flyyear 删除备份的旧表
   if (quick_rm_table(thd, old_db_type, alter_ctx.db, backup_name, FN_IS_TMP))
   {
     /*

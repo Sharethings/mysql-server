@@ -4466,6 +4466,7 @@ err:
     number              Length of packet
 */
 // flyyear 这面读取从主库来的event
+// 且一个一个的读取
 static ulong read_event(MYSQL* mysql, Master_info *mi, bool* suppress_warnings)
 {
   ulong len;
@@ -5862,15 +5863,15 @@ Stopping slave I/O thread due to out-of-memory error from master");
       }
 
       mysql_mutex_lock(&mi->data_lock);
-      // flyyear 刷新master_info信息
-      if (flush_master_info(mi, FALSE))
-      {
-        mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
-                   ER(ER_SLAVE_FATAL_ERROR),
-                   "Failed to flush master info.");
-        mysql_mutex_unlock(&mi->data_lock);
-        goto err;
-      }
+      // flyyear 刷新master_info信息 这玩意刷新的也太频繁了吧
+  //    if (flush_master_info(mi, FALSE))
+  //    {
+  //      mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
+  //                 ER(ER_SLAVE_FATAL_ERROR),
+  //                 "Failed to flush master info.");
+  //      mysql_mutex_unlock(&mi->data_lock);
+  //      goto err;
+  //    }
       mysql_mutex_unlock(&mi->data_lock);
 
       /*

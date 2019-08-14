@@ -272,6 +272,9 @@ extern const char *charsets_dir;
 // flyyear 缓存的类型
 enum cache_type
 {
+  // flyyear SEQ_READ_APPEDN模式是为了SQL线程和IO线程操作同一文件时提升性能的模式
+  // 在5.7和之前的版本使用该模式使用relay_log，但由于锁的原因，8.0版本中，IO线程和SQL线程分别使用独自的IO_CACHE，不再使用
+  // 同一个IO_CACHE的SQL_READ_APPEDN模式
   TYPE_NOT_SET= 0, READ_CACHE, WRITE_CACHE,
   SEQ_READ_APPEND		/* sequential read or append */,
   READ_FIFO, READ_NET,WRITE_NET};
@@ -430,7 +433,8 @@ typedef struct st_io_cache		/* Used when cacheing files */
     certain operations might not be available and yield unpredicatable
     results. Details to be documented later
   */
-  enum cache_type type;
+  enum cache_type type; // flyyear 缓存类型，包括读、写、顺序读、FIFO读、网络读、网络写
+
   /*
     Callbacks when the actual read I/O happens. These were added and
     are currently used for binary logging of LOAD DATA INFILE - when a
@@ -446,7 +450,7 @@ typedef struct st_io_cache		/* Used when cacheing files */
     increase the binlog_cache_disk_use and binlog_stmt_cache_disk_use status
     variables.
   */
-  ulong disk_writes;
+  ulong disk_writes; // flyyear 缓存刷入磁盘的次数
   void* arg;				/* for use by pre/post_read */
   char *file_name;			/* if used with 'open_cached_file' */
   char *dir,*prefix;
@@ -460,7 +464,7 @@ typedef struct st_io_cache		/* Used when cacheing files */
     "hard" error, and the actual number of I/O-ed bytes if the read/write was
     partial.
   */
-  int	seek_not_done,error;
+  int	seek_not_done,error;  // flyyear 标志在执行读写操作之前，是否需要执行seek
   /* buffer_length is memory size allocated for buffer or write_buffer */
   size_t	buffer_length;
   /* read_length is the same as buffer_length except when we use async io */
